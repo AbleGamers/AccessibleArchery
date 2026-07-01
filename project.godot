@@ -1,0 +1,42 @@
+; Engine configuration file.
+; Accessible Archery — an open-source, accessibility-first archery game.
+;
+; This file is generated/edited by Godot, but is kept readable here on purpose
+; so the project is legible to humans and AI contributors alike.
+
+config_version=5
+
+[application]
+
+config/name="Accessible Archery"
+config/description="An open-source, accessibility-first, Wii Sports-style archery game designed to be playable with whatever device a player uses."
+run/main_scene="res://scenes/boot.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+; Role loads first: it parses --server/--display/--station from the CLI so
+; every other autoload/scene can see the process role immediately.
+Role="*res://scripts/net/role.gd"
+; AssistSettings loads next so the input layer can read it on startup.
+AssistSettings="*res://scripts/accessibility/assist_settings.gd"
+Wind="*res://scripts/accessibility/wind.gd"
+InputRouter="*res://scripts/input/input_router.gd"
+Leaderboard="*res://scripts/leaderboard/leaderboard_store.gd"
+; LeaderboardNet loads last: it needs Leaderboard (the store) and Role ready.
+LeaderboardNet="*res://scripts/net/leaderboard_net.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+; GL Compatibility renderer for the widest device support (low-end machines,
+; older GPUs) — an accessibility consideration in its own right.
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

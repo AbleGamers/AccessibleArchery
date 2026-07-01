@@ -1,0 +1,4 @@
+# Offline speech bridge for the Voice input scheme. See docs/VOICE.md.
+# vosk 0.3.45+ needs Python 3.10+; 0.3.42+ covers Python 3.9 too.
+vosk>=0.3.42
+sounddevice>=0.4.6
