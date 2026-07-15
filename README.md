@@ -33,18 +33,28 @@ gameplay layer changes.** See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Try the accessibility thesis in 30 seconds
 
-A 3D archery range with three targets. Press **1–5** to hot-swap the device and
-play the *same game* every way:
+Pick one of four athletes — including two wheelchair archers — on a select
+screen that every device can drive (it even auto-scans for single-switch
+players; **P** reopens it). Then: a 3D archery range with three targets. Press
+**1–6** to hot-swap the device and play the *same game* every way:
 
-- **1 — Keyboard:** aim with arrows/WASD, hold **Space** to charge, release to fire.
-- **2 — Gamepad:** aim with the left stick, hold **A**.
+- **1 — Keyboard:** aim with arrows/WASD, hold **Space** to charge, release to
+  fire. At full draw your breath holds the aim steady — release before it runs
+  out, or the sway comes back worse (**Shift** holds breath manually).
+- **2 — Gamepad:** aim with the left stick, hold **A** (X = steady).
 - **3 — Single switch:** two-phase scan — tap **Space/A** to lock horizontal, tap
   to lock vertical, then it auto-fires. *The whole game with one input.*
 - **4 — Eye tracking:** aim with your gaze (the mouse stands in for an eye
   tracker); hold your gaze still to draw; it auto-looses at full draw.
 - **5 — Voice:** spoken commands (no mic? use the debug keys: arrows = aim,
   **Q** = draw, **E** = loose, **C** = center).
-- Close your eyes in any mode: **audio cues** pan with aim and rise in pitch with charge.
+- **6 — AT Bridge:** *any* external interface — sip-and-puff on an Arduino, an
+  EMG band, webcam head tracking, a phone — via a ~20-line UDP script. See
+  [docs/AT_BRIDGE.md](docs/AT_BRIDGE.md); try `python3 tools/at_bridge_demo.py`.
+- Close your eyes in any mode: the **audio cues** are a complete interface —
+  stereo pan = left/right, a two-note ping = up/down, a shimmer = you're on
+  gold, a chirp = full draw, and a spoken voice calls every score. See
+  [docs/BLIND_PLAY.md](docs/BLIND_PLAY.md) for the full sound legend.
 
 ## Project layout
 

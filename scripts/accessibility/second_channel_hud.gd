@@ -9,15 +9,30 @@ class_name SecondChannelHUD
 ##   * Captions — commentary/callouts (draw, loose, scores, wind shifts).
 ##   * Draw-snap flash — a brief screen pulse the instant full draw is reached
 ##     (mirrors the audio "full draw" and the haptic snap).
+##   * Spoken announcements — the same caption text is spoken aloud through the
+##     OS text-to-speech voice (AssistSettings.tts_enabled), so blind players
+##     get everything Deaf players get: true Second Channel symmetry.
 
 var _wind_label: Label
 var _caption: Label
 var _flash: ColorRect
 var _caption_timer: float = 0.0
 var _flash_t: float = 0.0
+var _tts_voice: String = ""
 
 func _ready() -> void:
 	layer = 10
+	# Discoverable by UI overlays (e.g. the character select announces the
+	# highlighted athlete here) without wiring through main.
+	add_to_group("second_channel")
+	# Pick an OS English voice once; empty (e.g. headless) disables speech.
+	var voices := DisplayServer.tts_get_voices_for_language("en")
+	if voices.is_empty():
+		var all_voices := DisplayServer.tts_get_voices()
+		if not all_voices.is_empty():
+			_tts_voice = all_voices[0].get("id", "")
+	else:
+		_tts_voice = voices[0]
 
 	# Full-screen white flash for the draw-snap (starts invisible).
 	_flash = ColorRect.new()
@@ -62,12 +77,17 @@ func _process(delta: float) -> void:
 		_flash_t -= delta
 		_flash.color.a = clampf(_flash_t / 0.25, 0.0, 1.0) * 0.5
 
-## Show a caption for a few seconds (commentary / callouts).
-func announce(text: String) -> void:
-	if not AssistSettings.captions_enabled:
-		return
-	_caption.text = text
-	_caption_timer = 2.5
+## Show a caption for a few seconds (commentary / callouts) and, unless the
+## caller marks it transient (speak = false, for chatter that already has a
+## dedicated sound), speak it aloud. New announcements interrupt stale speech
+## so the voice never lags the game.
+func announce(text: String, speak: bool = true) -> void:
+	if AssistSettings.captions_enabled:
+		_caption.text = text
+		_caption_timer = 2.5
+	if speak and AssistSettings.tts_enabled and _tts_voice != "":
+		DisplayServer.tts_stop()
+		DisplayServer.tts_speak(text, _tts_voice)
 
 ## Flash the screen the moment full draw is reached.
 func flash_draw_snap() -> void:

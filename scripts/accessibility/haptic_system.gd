@@ -27,6 +27,13 @@ func snap() -> void:
 	if dev >= 0 and AssistSettings.haptics_enabled:
 		Input.start_joy_vibration(dev, 0.9, 0.9, 0.12)
 
+## A long, rough rumble — the haptic half of "breath spent, sway rising".
+## Longer and heavier than snap() or cancel() so it reads as a warning.
+func breath_lost() -> void:
+	var dev := _device()
+	if dev >= 0 and AssistSettings.haptics_enabled:
+		Input.start_joy_vibration(dev, 0.7, 0.25, 0.45)
+
 ## A soft low buzz — the haptic half of the "draw cancelled" feedback. Distinct
 ## from snap() so the two events feel different in the hand.
 func cancel() -> void:

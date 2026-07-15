@@ -27,6 +27,11 @@ Leaderboard="*res://scripts/leaderboard/leaderboard_store.gd"
 ; LeaderboardNet loads last: it needs Leaderboard (the store) and Role ready.
 LeaderboardNet="*res://scripts/net/leaderboard_net.gd"
 
+[audio]
+
+; OS text-to-speech for spoken announcements (blind / low-vision play).
+general/text_to_speech=true
+
 [display]
 
 window/size/viewport_width=1280
@@ -40,3 +45,5 @@ window/stretch/aspect="expand"
 ; older GPUs) — an accessibility consideration in its own right.
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+; Required to export for Apple Silicon (universal/arm64 macOS builds).
+textures/vram_compression/import_etc2_astc=true
