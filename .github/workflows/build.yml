@@ -1,0 +1,117 @@
+# Cloud builds + Windows smoke test (Godot's answer to Unity Cloud Build).
+#
+# On every push/PR:
+#   1. export-windows  (Linux runner)  — exports the Windows exe with the same
+#      preset used locally, assembles the USB-ready booth package, and uploads
+#      both as downloadable artifacts (repo → Actions → run → Artifacts).
+#   2. smoke-test-windows (real Windows runner) — runs the actual exe in the
+#      station and server roles and fails the build if either crashes on boot
+#      or the server banner never appears. No GPU on runners, so this proves
+#      the build *runs correctly* on Windows; final visual check still wants
+#      human eyes on real hardware once.
+name: Build & smoke test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.7"
+
+jobs:
+  export-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot and export templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-stable
+
+      - name: Download Godot + export templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/godot ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          curl -sL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          curl -sL -o /tmp/templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mv /tmp/templates/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+
+      - name: Import project (builds the global class cache)
+        run: |
+          ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 --headless --path . --editor --quit-after 200 || true
+
+      - name: Export Windows build
+        run: |
+          set -euo pipefail
+          mkdir -p build/windows
+          ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 --headless --path . --export-release "Windows" build/windows/AccessibleArchery.exe
+          test -f build/windows/AccessibleArchery.exe
+
+      - name: Assemble booth package
+        run: bash booth/make-windows-package.sh
+
+      - name: Upload booth package (USB-ready zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccessibleArchery-booth-windows
+          path: build/AccessibleArchery-booth-windows.zip
+          if-no-files-found: error
+
+      - name: Upload bare Windows exe (for the smoke test)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccessibleArchery-windows-exe
+          path: build/windows/AccessibleArchery.exe
+          if-no-files-found: error
+
+  smoke-test-windows:
+    needs: export-windows
+    runs-on: windows-latest
+    steps:
+      - name: Download the exe
+        uses: actions/download-artifact@v4
+        with:
+          name: AccessibleArchery-windows-exe
+
+      - name: Boot the game (station role, headless)
+        shell: pwsh
+        run: |
+          $log = Join-Path $PWD "station.log"
+          $p = Start-Process -FilePath ".\AccessibleArchery.exe" -ArgumentList "--headless","--log-file",$log,"--","--station" -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) {
+            if (Test-Path $log) { Get-Content $log }
+            throw "Station role exited early (code $($p.ExitCode))"
+          }
+          Stop-Process -Id $p.Id -Force
+          if (Test-Path $log) { Get-Content $log }
+          Write-Host "Station role: booted and stayed up. OK"
+
+      - name: Run the leaderboard server role
+        shell: pwsh
+        run: |
+          $log = Join-Path $PWD "server.log"
+          $p = Start-Process -FilePath ".\AccessibleArchery.exe" -ArgumentList "--headless","--log-file",$log,"--","--server" -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) {
+            if (Test-Path $log) { Get-Content $log }
+            throw "Server role exited early (code $($p.ExitCode))"
+          }
+          $text = ""
+          if (Test-Path $log) { $text = Get-Content $log -Raw }
+          Stop-Process -Id $p.Id -Force
+          if (Test-Path $log) { Get-Content $log }
+          if ($text -notmatch "leaderboard server") {
+            throw "Server banner not found in log — server did not start correctly"
+          }
+          Write-Host "Server role: booted, banner present. OK"
