@@ -1,8 +1,15 @@
 @echo off
-REM Double-click to launch this machine as the back-of-booth leaderboard kiosk.
+REM Double-click to launch this machine as the BACK-OF-BOOTH LEADERBOARD KIOSK.
 REM Run this on the back machine, alongside start-server.bat.
-REM No export/build needed -- runs the project directly through Godot.
+REM
+REM Preferred: this .bat sits in the booth package folder NEXT TO
+REM AccessibleArchery.exe (the exported build). Fallback: run from source.
 setlocal
+
+if exist "%~dp0AccessibleArchery.exe" (
+	start "" "%~dp0AccessibleArchery.exe" -- --display
+	exit /b 0
+)
 
 set "DIR=%~dp0.."
 set "BUNDLED_GODOT=%DIR%\..\Godot.exe"

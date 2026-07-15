@@ -2,6 +2,11 @@
 
 One icon per line below. Nothing else on any machine needs opening.
 
+The icons live in the **AccessibleArchery-booth-windows** folder that was
+copied onto each machine (the same folder this guide is in). On a machine
+running from source instead, the same icons are in the project's `booth`
+folder — same names, same behaviour.
+
 Before the con: put a sticky note on each machine saying which one it is —
 **STATION 1**, **STATION 2**, or **BACK MACHINE** — so there's no guessing
 on the day.
@@ -10,7 +15,7 @@ on the day.
 
 ## 🎯 STATION 1 machine
 
-Double-click this **one** icon, in the `booth` folder:
+Double-click this **one** icon:
 
 > ### `start-station`
 
@@ -20,7 +25,7 @@ That's it. Nothing else to click on this machine.
 
 ## 🎯 STATION 2 machine
 
-Double-click this **one** icon, in the `booth` folder:
+Double-click this **one** icon:
 
 > ### `start-station`
 
@@ -31,8 +36,7 @@ a different machine. That's it.
 
 ## 🖥️ BACK MACHINE (the one with the big monitor)
 
-This machine needs **two** icons clicked, in this order, both in the `booth`
-folder:
+This machine needs **two** icons clicked, in this order:
 
 > ### 1st: `start-server`
 > ### 2nd: `start-display`
@@ -43,7 +47,7 @@ Both, every time. If you only click one, the leaderboard won't work.
 
 ## How to tell which file is which
 
-Every machine's `booth` folder has six icons in it. Only click the ones
+Each machine's folder has three `start-…` icons in it. Only click the ones
 listed above for that machine — ignore the rest. The full list, so you can
 double check you're not clicking the wrong one:
 
