@@ -23,6 +23,12 @@ var _broadcast: BroadcastScoreboard
 var _menu: OptionsMenu
 var _name_prompt: NamePrompt
 var _match: MatchManager
+var _impact_cam: ImpactCam
+var _stadium: Stadium
+var _select: CharacterSelect
+var _sfx: SfxSystem
+var _attract: AttractMode
+var _prev_match_phase: int = MatchManager.Phase.PLAYER_TURN
 var _score: int = 0
 var _aim: Vector2 = Vector2.ZERO
 var _charge: float = 0.0
@@ -36,21 +42,36 @@ func _ready() -> void:
 
 	_setup_world()
 
-	# The archer stands at +Z looking down the range toward -Z, at eye height.
+	# The archer is at +Z looking down the range toward -Z; the shooting height
+	# follows the selected athlete (standing vs wheelchair).
 	_controller = ArcheryController.new()
-	_controller.position = Vector3(0.0, 1.6, 6.0)
+	_controller.position = Vector3(0.0, AthleteRoster.eye_height(AssistSettings.athlete_index), 6.0)
 	add_child(_controller)
+	AssistSettings.changed.connect(func():
+		_controller.position.y = AthleteRoster.eye_height(AssistSettings.athlete_index))
 	_controller.aim_updated.connect(_on_aim_updated)
 	_controller.shot_resolved.connect(_on_shot_resolved)
+	_controller.arrow_fired.connect(_on_arrow_fired)
 	_controller.full_draw_reached.connect(_on_full_draw)
 	_controller.draw_cancelled.connect(_on_draw_cancelled)
+	_controller.steady_started.connect(func(): _channel.announce("Steady — breath held"))
+	_controller.breath_exhausted.connect(_on_breath_exhausted)
 
 	_add_target(Vector3(0.0, 1.6, -14.0))
 	_add_target(Vector3(-4.0, 1.2, -22.0))
 	_add_target(Vector3(4.0, 2.1, -30.0))
 
+	# Broadcast-style target cam for the shot (optional, AssistSettings).
+	_impact_cam = ImpactCam.new()
+	add_child(_impact_cam)
+
 	_audio = AudioCueSystem.new()
 	add_child(_audio)
+
+	# Procedural sound identity: whoosh/thunk, crowd, fanfare (all captioned
+	# elsewhere — this layer is atmosphere, never sole information).
+	_sfx = SfxSystem.new()
+	add_child(_sfx)
 
 	# "Second Channel" — sight + sound + touch parity for every critical cue.
 	_channel = SecondChannelHUD.new()
@@ -58,8 +79,10 @@ func _ready() -> void:
 	_haptics = HapticSystem.new()
 	add_child(_haptics)
 	Wind.shifted.connect(_on_wind_shift)
-	InputRouter.draw_pressed.connect(func(): _channel.announce("Drawing…"))
-	InputRouter.draw_released.connect(func(): _channel.announce("Loosed!"))
+	# Transient chatter is caption-only (speak = false): the draw tone and the
+	# release whoosh already ARE the audio versions of these two.
+	InputRouter.draw_pressed.connect(func(): _channel.announce("Drawing…", false))
+	InputRouter.draw_released.connect(func(): _channel.announce("Loosed!", false))
 
 	# Olympic-style match flow (sets, set points, victory, tie-break vs CPU).
 	_match = MatchManager.new()
@@ -95,6 +118,18 @@ func _ready() -> void:
 	_on_match_changed()
 	_refresh_hud()
 
+	# Athlete select: shown on startup (each new booth player picks), P reopens.
+	_select = CharacterSelect.new()
+	add_child(_select)
+	_select.open()
+
+	# Booth resilience: idle → self-running demo; first real input resets the
+	# station (fresh match + athlete select) for the next player.
+	_attract = AttractMode.new()
+	add_child(_attract)
+	_attract.setup(_controller, _select)
+	_attract.player_returned.connect(_on_player_returned)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
@@ -109,6 +144,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_B:   # show / hide the scoreboard window (single-monitor convenience)
 			AssistSettings.scoreboard_visible = not AssistSettings.scoreboard_visible
 			AssistSettings.changed.emit()
+		KEY_P:   # (re)open the athlete select
+			if not _select.is_open():
+				_select.open()
 		KEY_ESCAPE:   # open / close the accessibility & options menu
 			_menu.toggle()
 
@@ -130,6 +168,13 @@ func _do_bank(player_name: String) -> void:
 	_channel.announce("Banked %d for %s" % [_score, player_name])
 	_score = 0
 	_set_boards_current()
+	_refresh_hud()
+
+func _on_player_returned() -> void:
+	_match.reset()
+	_score = 0
+	_set_boards_current()
+	_select.open()
 	_refresh_hud()
 
 func _sync_scoreboard() -> void:
@@ -157,10 +202,15 @@ func _add_target(pos: Vector3) -> void:
 
 func _process(_delta: float) -> void:
 	# Feed the audible + haptic centering cues with how close the aim is to the
-	# nearest target centre, and which side that target is on.
+	# nearest target centre, which side that target is on, and the elevation
+	# error (for the two-note vertical cue).
 	var t := _targeting()
-	_audio.set_targeting(t.x, t.y)
+	_audio.set_targeting(t.x, t.y, t.z)
+	_audio.set_instability(_controller.sway_instability())
 	_haptics.update(t.x, t.y)
+	# The crowd hushes while the bow is drawn — dramatic, and it guarantees the
+	# ambience never masks the aiming cues during a blindfolded shot.
+	_sfx.set_duck(1.0 if _controller.is_drawing() else 0.0)
 	_update_reticle()
 
 func _build_reticle() -> void:
@@ -208,17 +258,32 @@ func _on_aim_updated(aim_norm: Vector2, charge: float) -> void:
 	_audio.update_cue(aim_norm, charge, _controller.is_drawing())
 	_refresh_hud()
 
-func _on_shot_resolved(score: int) -> void:
+func _on_arrow_fired(arrow: Node) -> void:
+	_sfx.shot_loosed()
+	if AssistSettings.impact_cam_enabled:
+		_impact_cam.follow(arrow, _nearest_target())
+
+func _on_shot_resolved(score: int, offset: Vector2) -> void:
+	# The thunk/ding pan to where the arrow struck the face (x in face radii),
+	# so a blind player hears "left of centre" from the impact itself.
+	_sfx.arrow_scored(score, offset.x)
 	_score += score                       # cumulative ring points (leaderboard-able)
 	_set_boards_current()
-	_channel.announce(_score_callout(score))
+	_channel.announce(_score_callout(score, offset))
 	_match.record_player_shot(score)      # drives set/match logic
 	_refresh_hud()
 
 func _on_full_draw() -> void:
 	_channel.flash_draw_snap()
-	_channel.announce("Full draw")
+	_channel.announce("Full draw", false)   # the chirp IS the audio version
+	_audio.full_draw_chirp()
 	_haptics.snap()
+
+func _on_breath_exhausted() -> void:
+	# Over-hold warning on all three channels: caption + haptic here; the audio
+	# side is the draw tone's sway wobble (AudioCueSystem.set_instability).
+	_channel.announce("Breath spent — sway rising!")
+	_haptics.breath_lost()
 
 func _on_draw_cancelled() -> void:
 	# Feedback on all three channels: caption, audio blip, haptic buzz.
@@ -231,25 +296,60 @@ func _on_wind_shift(lateral: float, kmh: float) -> void:
 	_channel.announce("Wind shift  %s  %d km/h" % [dir, int(round(kmh))])
 
 func _on_match_changed() -> void:
+	if _match.phase == MatchManager.Phase.MATCH_OVER and _prev_match_phase != MatchManager.Phase.MATCH_OVER:
+		_sfx.match_fanfare(_match.player_won)
+	_prev_match_phase = _match.phase
 	_set_boards_match("Sets — You %d : %d CPU   (Set %d)" % [
 		_match.player_set_points, _match.cpu_set_points, _match.current_set])
+	if _stadium != null:
+		if _match.phase == MatchManager.Phase.MATCH_OVER:
+			_stadium.set_jumbotron("MATCH OVER", "YOU %d — %d CPU" % [
+				_match.player_set_points, _match.cpu_set_points])
+		else:
+			_stadium.set_jumbotron("SET %d" % _match.current_set, "YOU %d — %d CPU" % [
+				_match.player_set_points, _match.cpu_set_points])
 	if _broadcast != null:
 		_broadcast.refresh(_match)
 	if _channel != null and _match.phase != MatchManager.Phase.PLAYER_TURN:
 		_channel.announce(_match.message)
 	_refresh_hud()
 
-func _score_callout(score: int) -> String:
-	match score:
-		10: return "Bullseye!  +10"
-		5:  return "Hit  +5"
-		1:  return "On target  +1"
-		_:  return "Miss"
+func _score_callout(score: int, offset: Vector2 = Vector2.ZERO) -> String:
+	var base := "Miss"
+	if score >= 10:
+		return "Bullseye!  +10"   # dead centre by definition — no direction
+	elif score >= 9:
+		base = "Gold  +9"
+	elif score >= 7:
+		base = "Red  +%d" % score
+	elif score >= 5:
+		base = "Blue  +%d" % score
+	elif score >= 3:
+		base = "Black  +%d" % score
+	elif score >= 1:
+		base = "White  +%d" % score
+	else:
+		return base
+	var direction := _impact_direction(offset)
+	return base if direction == "" else "%s — %s" % [base, direction]
 
-# Returns (accuracy 0..1, lateral -1..+1) for the nearest target to the aim.
-func _targeting() -> Vector2:
+# Archery-caller direction of the strike from the face centre ("high left"),
+# spoken with the score so a blind player knows which way to correct. A
+# component only counts when it is a meaningful share of the miss, so a shot
+# barely above dead-left reads "left", not "high left".
+func _impact_direction(offset: Vector2) -> String:
+	var parts := PackedStringArray()
+	if absf(offset.y) > 0.12 and absf(offset.y) > 0.4 * absf(offset.x):
+		parts.append("high" if offset.y > 0.0 else "low")
+	if absf(offset.x) > 0.12 and absf(offset.x) > 0.4 * absf(offset.y):
+		parts.append("left" if offset.x < 0.0 else "right")
+	return " ".join(parts)
+
+# Returns (accuracy 0..1, lateral -1..+1, vertical -1..+1) for the nearest
+# target to the aim. vertical > 0 means the target is above the aim (aim UP).
+func _targeting() -> Vector3:
 	if _controller == null:
-		return Vector2.ZERO
+		return Vector3.ZERO
 	var origin := _controller.global_position
 	var forward := _controller.aim_forward()
 	var best_dot := -1.0
@@ -263,11 +363,14 @@ func _targeting() -> Vector2:
 	var angle := acos(clampf(best_dot, -1.0, 1.0))
 	var accuracy := clampf(1.0 - angle / deg_to_rad(12.0), 0.0, 1.0)
 	var lateral := clampf(_controller.right_axis().dot(best_to) * 4.0, -1.0, 1.0)
-	return Vector2(accuracy, lateral)
+	var vertical := clampf((best_to.y - forward.y) * 6.0, -1.0, 1.0)
+	return Vector3(accuracy, lateral, vertical)
 
 func _setup_world() -> void:
-	# Low-poly Olympic arena (sky, stands + crowd, arch, floodlights, banners).
-	add_child(Stadium.new())
+	# Low-poly Olympic arena (sky, stands + crowd, arch, floodlights, banners,
+	# live jumbotron). Kept as a member so match state can drive the big screen.
+	_stadium = Stadium.new()
+	add_child(_stadium)
 
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
@@ -286,13 +389,15 @@ func _refresh_hud() -> void:
 	# The broadcast scoreboard (top-left) now shows set/arrow scores; this panel
 	# keeps the device/controls help and run totals for testing.
 	var lines := PackedStringArray([
-		"Device [1 Keyboard  2 Gamepad  3 Switch  4 Eye  5 Voice]: %s" % AssistSettings.scheme_label(),
+		"Device [1 Keyboard  2 Gamepad  3 Switch  4 Eye  5 Voice  6 Bridge]: %s" % AssistSettings.scheme_label(),
 		"  %s" % AssistSettings.controls_hint(),
 		"",
 		_match.message if _match != null else "",
 		"",
-		"Score: %d        Charge: %d%%" % [_score, int(round(_charge * 100.0))],
+		"Score: %d        Charge: %d%%        Breath: %d%%" % [_score,
+			int(round(_charge * 100.0)),
+			int(round((_controller.breath_fraction() if _controller != null else 1.0) * 100.0))],
 		"Audio cues: %s" % ("ON" if AssistSettings.audio_cues_enabled else "off"),
-		"Esc: options menu      L: bank   R: end/restart   V: flip camera   B: scoreboard",
+		"Esc: options menu   P: athlete   L: bank   R: end/restart   V: flip camera   B: scoreboard",
 	])
 	_hud.text = "\n".join(lines)

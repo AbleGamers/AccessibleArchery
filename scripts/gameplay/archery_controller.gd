@@ -15,15 +15,20 @@ class_name ArcheryController
 
 signal aim_updated(aim_norm: Vector2, charge: float)
 signal arrow_fired(arrow: Node)
-## The ring score (0 on a miss) of a shot once its flight resolves. Match logic
-## listens to this to tally the player's arrows.
-signal shot_resolved(score: int)
+## The ring score (0 on a miss) of a shot once its flight resolves, plus where
+## it struck relative to the face centre in face radii (see Arrow.resolved).
+## Match logic tallies the score; the impact audio pans by the offset.
+signal shot_resolved(score: int, offset: Vector2)
 ## Emitted once each draw when charge first reaches full — drives the Second
 ## Channel "draw-snap" cue (visual flash, audio, haptic pulse).
 signal full_draw_reached
 ## Emitted when a draw is released before full and so does not loose — drives the
 ## "draw cancelled" feedback so the player understands why nothing fired.
 signal draw_cancelled
+## Emitted when held breath engages at full draw and the reticle snaps steady.
+signal steady_started
+## Emitted once per draw when the held breath runs out — sway is now ramping.
+signal breath_exhausted
 
 const ARROW_SCENE := preload("res://scenes/arrow.tscn")
 
@@ -39,14 +44,48 @@ const ARROW_SCENE := preload("res://scenes/arrow.tscn")
 ## cancels. Keeps every shot a full-power full-draw, identical across devices.
 const FULL_DRAW_THRESHOLD := 0.97
 
+## --- Sway & breath (the GDD's draw-tension / hold-breath loop) ---------------
+## Sway builds while the string is pulled (pure tension: pre-full-draw releases
+## cancel, so it can never touch a shot). At full draw, held breath — automatic
+## by default, or the `steady` intent — SNAPS the reticle steady; while breath
+## lasts, sway is exactly zero, so a switch/eye auto-loose and a well-timed
+## manual release are identical. Over-hold past the breath and sway returns,
+## growing harder and faster. Amplitude scales with AssistSettings.sway_scale
+## (0 = always steady). Sway rotates only the aim pivot — never the camera.
+const SWAY_BASE := deg_to_rad(1.3)      # amplitude at full charge, unsteadied
+const OVERHOLD_GROWTH := 2.2            # amplitude growth per second over-held
+
 var _yaw: float = 0.0
 var _pitch: float = 0.0
 var _axis: Vector2 = Vector2.ZERO
 var _drawing: bool = false
 var _charge: float = 0.0
 
+var _sway: Vector2 = Vector2.ZERO       # (yaw, pitch) offsets, radians
+var _sway_amp: float = 0.0
+var _sway_t: float = 0.0
+var _breath: float = 0.0                # seconds of steadying left this draw
+var _overhold: float = 0.0              # seconds spent unsteadied at full draw
+var _steady_input: bool = false         # manual `steady` intent held
+var _was_steady: bool = false
+var _exhausted: bool = false
+
 var _aim_pivot: Node3D   # pitches with elevation; holds the bow + arms
 var _camera: Camera3D
+
+# The selected athlete's model (body on self, arms on the pivot), rebuilt when
+# the roster selection changes.
+var _athlete_root: Node3D
+var _arm_root: Node3D
+var _built_athlete: int = -1
+
+# Draw-pose animation refs & state: the draw arm/hand track the string, the
+# body leans into the draw, the head tilts, and release kicks a brief recoil.
+var _head_pivot: Node3D
+var _draw_arm: MeshInstance3D
+var _draw_hand: MeshInstance3D
+var _anim_charge: float = 0.0   # smoothed charge, drives lean/tilt
+var _recoil: float = 0.0        # decaying release impulse
 
 # First-person bow visual (built in code, no art assets). Held in the lower-left
 # of view; the string + nocked arrow pull back as the draw charges.
@@ -73,12 +112,15 @@ func _ready() -> void:
 	_apply_camera_side()
 	AssistSettings.changed.connect(_apply_camera_side)
 
-	_build_archer()
+	_build_athlete()
+	AssistSettings.changed.connect(_build_athlete)
 
 	InputRouter.aim_axis.connect(_on_aim_axis)
 	InputRouter.aim_absolute.connect(_on_aim_absolute)
 	InputRouter.draw_pressed.connect(_on_draw_pressed)
 	InputRouter.draw_released.connect(_on_draw_released)
+	InputRouter.steady_pressed.connect(func(): _steady_input = true)
+	InputRouter.steady_released.connect(func(): _steady_input = false)
 	_apply_rotation()
 	_build_bow()
 
@@ -86,9 +128,13 @@ func is_drawing() -> bool:
 	return _drawing
 
 func _on_aim_axis(axis: Vector2) -> void:
+	if InputRouter.captured_by_ui:
+		return
 	_axis = axis
 
 func _on_aim_absolute(position: Vector2) -> void:
+	if InputRouter.captured_by_ui:
+		return
 	# Right (+x) should turn the aim toward +X, which is a negative yaw.
 	_yaw = clampf(-position.x * absolute_yaw_range, -yaw_limit, yaw_limit)
 	_pitch = clampf(position.y * absolute_pitch_range, -pitch_limit, pitch_limit)
@@ -97,8 +143,14 @@ func _on_aim_absolute(position: Vector2) -> void:
 	_emit()
 
 func _on_draw_pressed() -> void:
+	if InputRouter.captured_by_ui:
+		return
 	_drawing = true
 	_charge = 0.0
+	_breath = AssistSettings.breath_seconds
+	_overhold = 0.0
+	_was_steady = false
+	_exhausted = false
 
 func _on_draw_released() -> void:
 	if not _drawing:
@@ -115,6 +167,14 @@ func _on_draw_released() -> void:
 		_emit()
 
 func _process(delta: float) -> void:
+	if InputRouter.captured_by_ui:
+		# A UI overlay owns the intents: stop steering and quietly let any
+		# half-drawn shot down (no cancel feedback — the player is in a menu).
+		_axis = Vector2.ZERO
+		if _drawing:
+			_drawing = false
+			_charge = 0.0
+			_emit()
 	var changed := false
 	if _axis != Vector2.ZERO:
 		var step := turn_speed * AssistSettings.aim_sensitivity * delta
@@ -129,14 +189,88 @@ func _process(delta: float) -> void:
 		if before < 1.0 and _charge >= 1.0:
 			full_draw_reached.emit()
 		changed = true
+	_update_sway(delta)
 	if changed:
 		_emit()
 	_update_bow()
+	_update_pose(delta)
+
+## The draw pose: the string hand tracks the nock exactly (same pull maths as
+## the string), while lean and head-tilt follow a smoothed charge so the whole
+## athlete settles into the draw — and a recoil impulse rocks them on release.
+func _update_pose(delta: float) -> void:
+	_anim_charge = lerpf(_anim_charge, _charge if _drawing else 0.0, clampf(10.0 * delta, 0.0, 1.0))
+	_recoil = lerpf(_recoil, 0.0, clampf(6.0 * delta, 0.0, 1.0))
+	if _athlete_root != null:
+		_athlete_root.rotation_degrees = Vector3(
+			-3.0 * _anim_charge + 5.0 * _recoil, 0.0, 1.5 * _anim_charge)
+	if _head_pivot != null:
+		_head_pivot.rotation_degrees = Vector3(2.0 * _anim_charge, 0.0, 8.0 * _anim_charge)
+	if _draw_arm != null and _draw_hand != null:
+		var pull := (_charge if _drawing else 0.0) * BOW_MAX_PULL
+		# Same offsets as the bow: bow_root at z -0.62 (scale 2), nock at
+		# BOW_REST_Z + pull  →  pivot-space z = -0.58 + 2·pull.
+		var hand := Vector3(0.0, 0.0, -0.58 + 2.0 * pull)
+		_orient_segment(_draw_arm, Vector3(0.20, -0.02, 0.05), hand)
+		_draw_hand.position = hand
+
+# The sway & breath state machine (see the block comment at SWAY_BASE).
+func _update_sway(delta: float) -> void:
+	var target_amp := 0.0
+	if _drawing:
+		if _charge >= 1.0:
+			var steady := false
+			# Hands-free devices (no steady intent) always get auto-hold.
+			var wants := _steady_input or AssistSettings.auto_hold_breath \
+				or not InputRouter.steady_supported()
+			if wants and not _exhausted:
+				steady = true
+				if not _was_steady:
+					_was_steady = true
+					steady_started.emit()
+				if not AssistSettings.unlimited_time:
+					_breath -= delta
+					if _breath <= 0.0:
+						_exhausted = true
+						breath_exhausted.emit()
+			if not steady:
+				_overhold += delta
+				target_amp = SWAY_BASE * (1.0 + OVERHOLD_GROWTH * _overhold)
+		else:
+			target_amp = SWAY_BASE * _charge   # tension builds with the pull
+	target_amp *= AssistSettings.sway_scale
+	# Snap down fast (the "steady" beat reads as a lock), grow back smoothly.
+	var k := 14.0 if target_amp < _sway_amp else 4.0
+	_sway_amp = lerpf(_sway_amp, target_amp, clampf(k * delta, 0.0, 1.0))
+	# Over-holding speeds the wobble up as well as widening it.
+	_sway_t += delta * (1.2 + 0.8 * _overhold)
+	if _sway_amp > 0.00005:
+		_sway = Vector2(
+			_sway_amp * (0.6 * sin(_sway_t * 2.3) + 0.4 * sin(_sway_t * 5.1 + 1.7)),
+			_sway_amp * (0.6 * sin(_sway_t * 2.9 + 0.8) + 0.4 * sin(_sway_t * 4.3 + 2.4)))
+		_apply_rotation()
+	elif _sway != Vector2.ZERO:
+		_sway = Vector2.ZERO
+		_apply_rotation()
+
+## 0..1: how unsteady the aim is right now, relative to base sway — feeds the
+## audio-tone wobble and haptics so instability is perceivable without sight.
+func sway_instability() -> float:
+	return clampf(_sway_amp / (SWAY_BASE * 2.0), 0.0, 1.0)
+
+## Remaining held-breath fraction (1 = full), for HUD / captions.
+func breath_fraction() -> float:
+	return clampf(_breath / maxf(AssistSettings.breath_seconds, 0.001), 0.0, 1.0)
+
+func is_steady() -> bool:
+	return _drawing and _charge >= 1.0 and _was_steady and not _exhausted
 
 func _apply_rotation() -> void:
 	rotation = Vector3(0.0, _yaw, 0.0)              # body + camera turn
 	if _aim_pivot != null:
-		_aim_pivot.rotation = Vector3(_pitch, 0.0, 0.0)  # bow arm elevates
+		# Sway wobbles only the aim pivot (bow arm), NEVER the camera — the view
+		# stays rock steady for motion-sensitive players while the reticle drifts.
+		_aim_pivot.rotation = Vector3(_pitch + _sway.y, _sway.x, 0.0)
 
 ## World-space direction the bow is aiming (used by the audio/haptic cues).
 func aim_forward() -> Vector3:
@@ -170,9 +304,10 @@ func _fire() -> void:
 	get_parent().add_child(arrow)
 	arrow.global_position = global_position + forward * 0.6
 	arrow.launch(forward * max_launch_speed)   # always full power — charge never alters the shot
-	arrow.resolved.connect(func(score: int): shot_resolved.emit(score))
+	arrow.resolved.connect(func(score: int, offset: Vector2): shot_resolved.emit(score, offset))
 	arrow_fired.emit(arrow)
 	_charge = 0.0
+	_recoil = 1.0
 	_emit()
 
 func _apply_aim_assist(dir: Vector3) -> Vector3:
@@ -211,8 +346,11 @@ func _build_bow() -> void:
 	_bow_root.add_child(_string_upper)
 	_bow_root.add_child(_string_lower)
 
-	# Nocked arrow rides the string and pulls back with charge.
-	_nocked_arrow = _make_arrow_visual(0.6, 0.03, 0.05)
+	# Nocked arrow rides the string and pulls back with charge. Built by the
+	# same function as the flight arrow, so what's on the string is exactly
+	# what lands in the target (bow_root is scaled 2x, hence the half length).
+	_nocked_arrow = Node3D.new()
+	Arrow.build_visual(_nocked_arrow, 0.55)
 	_bow_root.add_child(_nocked_arrow)
 	_update_bow()
 
@@ -223,7 +361,8 @@ func _update_bow() -> void:
 	var nock := Vector3(0.0, 0.0, BOW_REST_Z + pull)
 	_orient_segment(_string_upper, Vector3(0.0, BOW_TIP_Y, BOW_TIP_Z), nock)
 	_orient_segment(_string_lower, Vector3(0.0, -BOW_TIP_Y, BOW_TIP_Z), nock)
-	_nocked_arrow.position = nock + Vector3(0.0, 0.0, -0.30)
+	# Tail (nock end, +0.275 of the 0.55 arrow) sits on the string.
+	_nocked_arrow.position = nock + Vector3(0.0, 0.0, -0.275)
 
 # A unit-radius cylinder oriented to span from a -> b in the parent's space.
 func _segment(a: Vector3, b: Vector3, radius: float, color: Color) -> MeshInstance3D:
@@ -248,70 +387,32 @@ func _orient_segment(mi: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 	var z := x.cross(y).normalized()
 	mi.transform = Transform3D(Basis(x, y, z), (a + b) * 0.5)
 
-# A small arrow visual (shaft + cone head) pointing along local -Z.
-func _make_arrow_visual(length: float, shaft_w: float, head_r: float) -> Node3D:
-	var root := Node3D.new()
-	var shaft := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(shaft_w, shaft_w, length)
-	shaft.mesh = box
-	shaft.material_override = _flat_material(Color(0.95, 0.90, 0.70))
-	root.add_child(shaft)
-	var head := MeshInstance3D.new()
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.0
-	cone.bottom_radius = head_r
-	cone.height = head_r * 2.6
-	head.mesh = cone
-	head.material_override = _flat_material(Color(0.80, 0.80, 0.85))
-	head.rotation = Vector3(deg_to_rad(-90.0), 0.0, 0.0)   # cone tip -> -Z
-	head.position = Vector3(0.0, 0.0, -length * 0.5 - head_r)
-	root.add_child(head)
-	return root
-
 func _flat_material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	return mat
 
-# --- Low-poly archer (seen from behind in the OTS camera) ---------------------
+# --- The selected athlete (seen from behind in the OTS camera) ----------------
+# Models come from AthleteRoster (four archetypes, including wheelchair
+# athletes). Only the visuals and shooting height differ — the aim envelope is
+# identical for every athlete.
 
-func _build_archer() -> void:
-	var skin := Color(0.86, 0.67, 0.52)
-	var outfit := Color(0.20, 0.45, 0.55)
-	var dark := Color(0.16, 0.19, 0.24)
-
-	# Origin sits at shoulder height (the controller is placed at eye/shoulder
-	# height), so the body hangs below and the head sits just above.
-	var head := SphereMesh.new()
-	head.radius = 0.12
-	head.height = 0.24
-	_solid(self, head, Vector3(0.0, 0.30, 0.02), skin)
-
-	var torso := BoxMesh.new()
-	torso.size = Vector3(0.42, 0.72, 0.24)
-	_solid(self, torso, Vector3(0.0, -0.18, 0.0), outfit)
-
-	var hips := BoxMesh.new()
-	hips.size = Vector3(0.40, 0.20, 0.24)
-	_solid(self, hips, Vector3(0.0, -0.62, 0.0), dark)
-
-	for side in [-1.0, 1.0]:
-		var leg := BoxMesh.new()
-		leg.size = Vector3(0.16, 0.95, 0.18)
-		_solid(self, leg, Vector3(0.11 * side, -1.15, 0.0), dark)
-
-	# Arms live under the pitch pivot so they raise with the bow. Bow arm reaches
-	# forward to the grip; draw arm pulls back toward the face.
-	_aim_pivot.add_child(_segment(Vector3(-0.20, 0.0, 0.0), Vector3(-0.06, 0.0, -0.55), 0.05, outfit))
-	_aim_pivot.add_child(_segment(Vector3(0.20, 0.0, 0.0), Vector3(0.06, 0.04, 0.14), 0.05, outfit))
-
-func _solid(parent: Node, mesh: Mesh, pos: Vector3, color: Color) -> void:
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mi.material_override = mat
-	mi.position = pos
-	parent.add_child(mi)
+func _build_athlete() -> void:
+	if _built_athlete == AssistSettings.athlete_index:
+		return
+	_built_athlete = AssistSettings.athlete_index
+	if _athlete_root != null:
+		_athlete_root.queue_free()
+	if _arm_root != null:
+		_arm_root.queue_free()
+	_athlete_root = Node3D.new()
+	add_child(_athlete_root)
+	_arm_root = Node3D.new()
+	_aim_pivot.add_child(_arm_root)
+	var def := AthleteRoster.get_def(AssistSettings.athlete_index)
+	var body_refs := AthleteRoster.build_body(_athlete_root, def)
+	var arm_refs := AthleteRoster.build_arms(_arm_root, def)
+	_head_pivot = body_refs.get("head")
+	_draw_arm = arm_refs.get("draw_arm")
+	_draw_hand = arm_refs.get("draw_hand")

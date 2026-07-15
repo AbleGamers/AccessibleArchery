@@ -91,7 +91,8 @@ func _refresh_list() -> void:
 	var lines := PackedStringArray()
 	var rank := 1
 	for e in Leaderboard.top(8):
-		lines.append("%d.  %-12s  %d" % [rank, e["name"], e["score"]])
+		var badge := AssistSettings.badge_for(e.get("input", -1))
+		lines.append("%d.  %-12s  %-5d  %s" % [rank, e["name"], e["score"], badge])
 		rank += 1
 	if lines.is_empty():
 		lines.append("(no scores yet — press L to bank a run)")

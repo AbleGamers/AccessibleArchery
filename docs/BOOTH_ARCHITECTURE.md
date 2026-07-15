@@ -316,6 +316,37 @@ shows "offline" (it keeps working; scores sync when the network returns).
    entirely? Still open — the current blocklist is a small placeholder, not
    a real moderation system.
 
+## 2026-07-01 session: local scoreboard badges + desktop dev launchers
+
+**Input-method badges now also show on the two local (non-kiosk) scoreboards**,
+not just the back-of-booth display: `scripts/ui/scoreboard_panel.gd`
+(in-window overlay) and `scripts/leaderboard/scoreboard_window.gd`
+(second-monitor window) each append a badge per row now, via a new shared
+helper `AssistSettings.badge_for(scheme: int) -> String` (static, takes the
+scheme an *entry* was banked under — may differ from the current player's).
+Legacy entries saved before this change have no `input` field and render as
+"Unknown". `display_kiosk.gd`'s own `_BADGES` dict is unchanged/separate
+(slightly different label text, e.g. "Eye-tracking" vs kept as-is there) —
+worth unifying later if the two ever drift.
+
+**Desktop dev-testing launchers** (for solo local testing, distinct from the
+real booth `booth/` scripts): two AppleScript apps (`osacompile`, no Terminal
+window) on `~/Desktop`, hardcoded to `~/Downloads/Godot.app` +
+`~/Downloads/AccessibleArchery`:
+- `Accessible Archery.app` — plain station, `-- --ip=127.0.0.1` (skips the
+  5s UDP discovery wait/flakiness, connects straight to loopback if a server
+  is up).
+- `Accessible Archery Scoreboard.app` — starts a headless `--server` in the
+  background, waits 1s, then opens `--display --windowed --ip=127.0.0.1`: a
+  window showing **only** the scoreboard (no 3D game), alt-tabbable. This
+  replaced an earlier, wrong approach (a `--force-scoreboard-window` CLI flag
+  that added `ScoreboardWindow` inside the *same* station process) — that
+  necessarily opens a full second playable game alongside the small
+  scoreboard corner window, which is not what "just show me the scoreboard"
+  means. `--server`/`--display` are the correct existing roles for a
+  standalone board view and were used instead; the flag was reverted out of
+  `main.gd`.
+
 ## Pointers for a fresh session
 
 - Read `CLAUDE.md`, this file, then `scripts/main.gd` and

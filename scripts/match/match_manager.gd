@@ -28,6 +28,8 @@ var cpu_set_points: int = 0
 var player_arrows: Array[int] = []
 var cpu_arrows: Array[int] = []
 var message: String = "Set 1 — shoot 3 arrows."
+## Valid once phase == MATCH_OVER (drives victory presentation).
+var player_won: bool = false
 
 func _ready() -> void:
 	randomize()
@@ -54,6 +56,7 @@ func reset() -> void:
 	cpu_set_points = 0
 	player_arrows.clear()
 	cpu_arrows.clear()
+	player_won = false
 	message = "Set 1 — shoot 3 arrows."
 	changed.emit()
 
@@ -103,18 +106,22 @@ func _check_victory() -> void:
 		message = "%d–%d! Sudden-death shootout — shoot ONE arrow." % [player_set_points, cpu_set_points]
 	elif p_win:
 		phase = Phase.MATCH_OVER
+		player_won = true
 		message = "MATCH! You win %d–%d. Press R for a rematch." % [player_set_points, cpu_set_points]
 	elif c_win:
 		phase = Phase.MATCH_OVER
+		player_won = false
 		message = "Match over — CPU wins %d–%d. Press R for a rematch." % [cpu_set_points, player_set_points]
 
 func _resolve_tiebreak(player_score: int) -> void:
 	var cpu_score := _cpu_arrow()
 	if player_score > cpu_score:
 		phase = Phase.MATCH_OVER
+		player_won = true
 		message = "Shootout: You %d – CPU %d. You WIN the match! Press R to rematch." % [player_score, cpu_score]
 	elif cpu_score > player_score:
 		phase = Phase.MATCH_OVER
+		player_won = false
 		message = "Shootout: You %d – CPU %d. CPU wins. Press R to rematch." % [player_score, cpu_score]
 	else:
 		message = "Shootout tied %d–%d — shoot again!" % [player_score, cpu_score]
@@ -136,19 +143,15 @@ func _cpu_play_set() -> Array[int]:
 		arrows.append(_cpu_arrow())
 	return arrows
 
+# Olympic 1–10 ring scoring: the CPU's shots cluster around a mean that rises
+# with skill, with a spread that tightens — so late sets feel like a pro on fire.
 func _cpu_arrow() -> int:
 	var skill := _cpu_skill()
-	var roll := randf()
-	var p_ten := lerpf(0.15, 0.55, skill)   # bullseye chance rises with skill
-	var p_five := 0.30
-	var p_one := 0.30
-	if roll < p_ten:
-		return 10
-	elif roll < p_ten + p_five:
-		return 5
-	elif roll < p_ten + p_five + p_one:
-		return 1
-	return 0   # miss
+	if randf() < lerpf(0.10, 0.01, skill):
+		return 0   # clean miss
+	var mean := lerpf(5.5, 9.3, skill)
+	var spread := lerpf(2.6, 1.1, skill)
+	return clampi(int(round(mean + randfn(0.0, spread))), 1, 10)
 
 func _sum(arr: Array[int]) -> int:
 	var total := 0

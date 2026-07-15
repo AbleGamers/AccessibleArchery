@@ -25,3 +25,9 @@ var scheme: int = -1
 ## adapters should early-out in _process() when this is false.
 func _is_active() -> bool:
 	return scheme == AssistSettings.input_scheme
+
+## Whether this device can express the optional `steady` (hold-breath) intent.
+## Hands-free / low-bandwidth devices return false and the controller steadies
+## automatically at full draw for them — never a competitive disadvantage.
+func supports_steady() -> bool:
+	return false
