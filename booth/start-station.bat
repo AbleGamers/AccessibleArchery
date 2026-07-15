@@ -1,9 +1,15 @@
 @echo off
-REM Double-click to launch this machine as a play station.
-REM No export/build needed -- runs the project directly through Godot.
-REM Expects Godot.exe to sit next to the AccessibleArchery project folder
-REM (see booth\README.md), or Godot installed on this machine already.
+REM Double-click to launch this machine as a PLAY STATION (the game).
+REM
+REM Preferred: this .bat sits in the booth package folder NEXT TO
+REM AccessibleArchery.exe (the exported build). Fallback: run from source
+REM with Godot.exe next to the AccessibleArchery project folder.
 setlocal
+
+if exist "%~dp0AccessibleArchery.exe" (
+	start "" "%~dp0AccessibleArchery.exe" -- --station --kiosk
+	exit /b 0
+)
 
 set "DIR=%~dp0.."
 set "BUNDLED_GODOT=%DIR%\..\Godot.exe"
