@@ -5,10 +5,10 @@ what you're seeing, it's safe to just power-cycle the machine in question —
 everything reconnects on its own.
 
 This assumes a technical person has already done the one-time-per-machine
-setup (`booth/README.md`) — each machine already has a `Godot.app`/`Godot.exe`
-and the `AccessibleArchery` folder sitting together, and the launch scripts
-have been test-run once already. If a machine hasn't had that done yet, this
-page won't be enough — find whoever set up the booth.
+setup: the **AccessibleArchery-booth-windows** folder (from the downloadable
+zip) copied onto each machine, and the launch scripts test-run once. If a
+machine hasn't had that done yet, this page won't be enough — find whoever
+set up the booth. (Running from source instead? See `booth/README.md`.)
 
 **For exactly which icon to double-click on which machine, use
 `docs/BOOTH_CLICK_GUIDE.md` instead of this page** — it's the one-glance
@@ -63,6 +63,26 @@ Check that `start-server` is actually running on the back machine (its
 window/terminal should say "server listening on port 4433"). If it crashed,
 just double-click `start-server` again — the display and stations will find
 it automatically.
+
+## Voice control (optional — needs one-time setup per station)
+
+The game's speech recognition runs as a small companion program next to the
+game, so **input scheme 5 (Voice) only hears speech on stations where a
+technical person has done this once**:
+
+1. Install Python 3 (python.org) on the station.
+2. In the booth folder's `voice/` subfolder, open a terminal and run:
+   `pip install -r requirements.txt`
+3. Download the small English model from https://alphacephei.com/vosk/models
+   (`vosk-model-small-en-us-0.15`, ~40 MB) and unzip it into `voice/`.
+4. Plug in a microphone (USB headset works best on a noisy show floor).
+5. Start it alongside the game:
+   `python voice_bridge.py --model vosk-model-small-en-us-0.15`
+
+**Without this setup, everything else still works** — voice is the only scheme
+with an extra moving part. (Scheme 5 also accepts test keys — arrows aim,
+Q draws, E fires — so the mapping can be demonstrated even without a mic.)
+Convention floors are LOUD: position the mic close to the player's mouth.
 
 ## End of day
 

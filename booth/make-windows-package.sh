@@ -27,6 +27,13 @@ cp "$PROJECT/docs/BOOTH_CLICK_GUIDE.md" "$OUT/READ ME FIRST - which icon to clic
 cp "$PROJECT/docs/BOOTH_RUNBOOK.md" "$OUT/RUNBOOK - setup and troubleshooting.md"
 cp "$PROJECT/docs/PLAYER_GUIDE.md" "$OUT/PLAYER GUIDE - print me.md" 2>/dev/null || true
 
+# Voice bridge (optional per-station setup — see the runbook's Voice section).
+# The speech model (~40 MB) is downloaded on the machine, not shipped here.
+mkdir -p "$OUT/voice"
+cp "$PROJECT/tools/voice_bridge.py" "$OUT/voice/"
+cp "$PROJECT/tools/requirements.txt" "$OUT/voice/"
+cp "$PROJECT/docs/VOICE.md" "$OUT/voice/README.md"
+
 ( cd "$PROJECT/build" && rm -f AccessibleArchery-booth-windows.zip \
 	&& zip -rq AccessibleArchery-booth-windows.zip AccessibleArchery-booth-windows )
 
