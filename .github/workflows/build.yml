@@ -1,9 +1,10 @@
 # Cloud builds + Windows smoke test (Godot's answer to Unity Cloud Build).
 #
 # On every push/PR:
-#   1. export-windows  (Linux runner)  — exports the Windows exe with the same
-#      preset used locally, assembles the USB-ready booth package, and uploads
-#      both as downloadable artifacts (repo → Actions → run → Artifacts).
+#   1. export  (Linux runner)  — exports the Windows exe (with the same preset
+#      used locally), assembles the USB-ready booth package, AND exports an
+#      unsigned macOS build for testers; all uploaded as downloadable artifacts
+#      (repo → Actions → run → Artifacts).
 #   2. smoke-test-windows (real Windows runner) — runs the actual exe in the
 #      station and server roles and fails the build if either crashes on boot
 #      or the server banner never appears. No GPU on runners, so this proves
@@ -22,7 +23,7 @@ env:
   GODOT_VERSION: "4.7"
 
 jobs:
-  export-windows:
+  export:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,8 +76,26 @@ jobs:
           path: build/windows/AccessibleArchery.exe
           if-no-files-found: error
 
+      # macOS export uses the unsigned "macOS Test" preset (codesign off) so it
+      # exports here on Linux. Testers unzip and right-click → Open (Gatekeeper
+      # warns once on an unsigned app). Signed/public builds use the "macOS"
+      # preset on a Mac.
+      - name: Export macOS build (unsigned, for testers)
+        run: |
+          set -euo pipefail
+          mkdir -p build/macos
+          ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 --headless --path . --export-release "macOS Test" build/macos/AccessibleArchery-macos.zip
+          test -f build/macos/AccessibleArchery-macos.zip
+
+      - name: Upload macOS build (unsigned zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccessibleArchery-macos
+          path: build/macos/AccessibleArchery-macos.zip
+          if-no-files-found: error
+
   smoke-test-windows:
-    needs: export-windows
+    needs: export
     runs-on: windows-latest
     steps:
       - name: Download the exe
@@ -123,7 +142,7 @@ jobs:
   # Only runs after the Windows smoke test passes.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [export-windows, smoke-test-windows]
+    needs: [export, smoke-test-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
