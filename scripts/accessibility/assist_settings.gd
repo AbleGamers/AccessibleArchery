@@ -362,3 +362,12 @@ func controls_hint() -> String:
 		InputScheme.BRIDGE:
 			return "External interface on UDP :9010 — see docs/AT_BRIDGE.md (try tools/at_bridge_demo.py)"
 	return ""
+
+## Which screen side the scoreboard overlays should sit on so they never cover
+## the downrange targets. The over-the-shoulder rig frames the targets on the
+## OPPOSITE side from the camera shoulder — camera on the right (camera_on_left
+## = false) puts the targets on the right — so the boards ride the side the
+## camera is on, and flip with it (V / the options menu). Verified in-game
+## against both camera sides.
+func scoreboard_on_left() -> bool:
+	return not camera_on_left

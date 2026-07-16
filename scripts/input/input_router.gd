@@ -44,9 +44,17 @@ func _ready() -> void:
 	register_adapter(VoiceAdapter.new())
 	register_adapter(BridgeAdapter.new())
 
+## Number-key device hot-swap is a playtest affordance, not a shipping control
+## (players choose their device up front in the play-style picker). It stays off
+## until the on-screen device switcher is opened (backtick), so a stray number
+## press during normal play can never change the active device.
+var hotswap_enabled: bool = false
+
 func _process(_delta: float) -> void:
-	# Let the player hot-swap the active device. In a shipping build this lives
-	# in an accessibility menu; here it is on number keys for quick testing.
+	if not hotswap_enabled:
+		return
+	# Let the player hot-swap the active device — only while the device switcher
+	# overlay is open (see DeviceSwitcher / main.gd's backtick toggle).
 	if Input.is_action_just_pressed("scheme_keyboard"):
 		AssistSettings.set_input_scheme(AssistSettings.InputScheme.KEYBOARD_MOUSE)
 	elif Input.is_action_just_pressed("scheme_gamepad"):

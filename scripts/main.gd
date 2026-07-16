@@ -27,6 +27,7 @@ var _impact_cam: ImpactCam
 var _venue: MeadowRange
 var _select: CharacterSelect
 var _playstyle: PlaystyleSelect
+var _device_switcher: DeviceSwitcher
 var _sfx: SfxSystem
 var _attract: AttractMode
 var _prev_match_phase: int = MatchManager.Phase.PLAYER_TURN
@@ -124,6 +125,11 @@ func _ready() -> void:
 	_select = CharacterSelect.new()
 	add_child(_select)
 
+	# Playtest device switcher (backtick). Hidden by default; players pick their
+	# device up front, so the number-key chooser is no longer a persistent HUD.
+	_device_switcher = DeviceSwitcher.new()
+	add_child(_device_switcher)
+
 	# "How do you want to play?" — first-run accessibility-preset picker. Shown
 	# once (before athlete select) so a new player sets up their experience and a
 	# blind player discovers audio-guided play by ear; then it hands off to the
@@ -170,6 +176,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select.open()
 		KEY_ESCAPE:   # open / close the accessibility & options menu
 			_menu.toggle()
+		KEY_QUOTELEFT:   # backtick — playtest device switcher (press 1-6 to swap)
+			_device_switcher.toggle()
 
 func _bank_score() -> void:
 	if _name_prompt.is_open():
@@ -428,8 +436,7 @@ func _refresh_hud() -> void:
 	# The broadcast scoreboard (top-left) now shows set/arrow scores; this panel
 	# keeps the device/controls help and run totals for testing.
 	var lines := PackedStringArray([
-		"Device [1 Keyboard  2 Gamepad  3 Switch  4 Eye  5 Voice  6 Bridge]: %s" % AssistSettings.scheme_label(),
-		"  %s" % AssistSettings.controls_hint(),
+		AssistSettings.controls_hint(),
 		"",
 		_match.message if _match != null else "",
 		"",
@@ -437,6 +444,6 @@ func _refresh_hud() -> void:
 			int(round(_charge * 100.0)),
 			int(round((_controller.breath_fraction() if _controller != null else 1.0) * 100.0))],
 		"Audio cues: %s" % ("ON" if AssistSettings.audio_cues_enabled else "off"),
-		"Esc: options menu   P: athlete   L: bank   R: end/restart   V: flip camera   B: scoreboard",
+		"Esc: options   P: athlete   L: bank   R: end/restart   V: flip camera   B: scoreboard   `: devices",
 	])
 	_hud.text = "\n".join(lines)
