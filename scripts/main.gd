@@ -26,6 +26,7 @@ var _match: MatchManager
 var _impact_cam: ImpactCam
 var _stadium: Stadium
 var _select: CharacterSelect
+var _playstyle: PlaystyleSelect
 var _sfx: SfxSystem
 var _attract: AttractMode
 var _prev_match_phase: int = MatchManager.Phase.PLAYER_TURN
@@ -118,16 +119,36 @@ func _ready() -> void:
 	_on_match_changed()
 	_refresh_hud()
 
-	# Athlete select: shown on startup (each new booth player picks), P reopens.
+	# Athlete select (P reopens). Opened after the play-style is chosen, or
+	# straight away on later launches / at a configured booth station.
 	_select = CharacterSelect.new()
 	add_child(_select)
-	_select.open()
+
+	# "How do you want to play?" — first-run accessibility-preset picker. Shown
+	# once (before athlete select) so a new player sets up their experience and a
+	# blind player discovers audio-guided play by ear; then it hands off to the
+	# athlete select. Reopened from the options menu (Change play style).
+	_playstyle = PlaystyleSelect.new()
+	add_child(_playstyle)
+	_playstyle.chosen.connect(func(_i):
+		_controller.position.y = AthleteRoster.eye_height(AssistSettings.athlete_index)
+		_select.open())
+	_menu.playstyle_requested.connect(_playstyle.open)
+
+	# First run picks a play style; returning players/stations skip straight to
+	# the athlete select (their preset persists). Auto-detect a gamepad on the
+	# very first launch so "Standard" needs no manual device choice.
+	if not AssistSettings.setup_complete:
+		_autodetect_device()
+		_playstyle.open()
+	else:
+		_select.open()
 
 	# Booth resilience: idle → self-running demo; first real input resets the
 	# station (fresh match + athlete select) for the next player.
 	_attract = AttractMode.new()
 	add_child(_attract)
-	_attract.setup(_controller, _select)
+	_attract.setup(_controller, _select, _playstyle)
 	_attract.player_returned.connect(_on_player_returned)
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -170,11 +191,25 @@ func _do_bank(player_name: String) -> void:
 	_set_boards_current()
 	_refresh_hud()
 
+# First-launch convenience: if a gamepad is plugged in and the player hasn't
+# chosen a device yet, default to it — so a booth walk-up on a controller never
+# has to find the device menu. A deliberate choice on a later launch (persisted
+# input_scheme) is never overridden, since this only runs when setup isn't done.
+func _autodetect_device() -> void:
+	if AssistSettings.input_scheme == AssistSettings.InputScheme.KEYBOARD_MOUSE \
+			and not Input.get_connected_joypads().is_empty():
+		AssistSettings.set_input_scheme(AssistSettings.InputScheme.GAMEPAD)
+
 func _on_player_returned() -> void:
 	_match.reset()
 	_score = 0
 	_set_boards_current()
-	_select.open()
+	# A configured station drops the next player straight into athlete select;
+	# an unconfigured one (first run not finished) resumes at the play-style pick.
+	if AssistSettings.setup_complete:
+		_select.open()
+	else:
+		_playstyle.open()
 	_refresh_hud()
 
 func _sync_scoreboard() -> void:
@@ -207,6 +242,9 @@ func _process(_delta: float) -> void:
 	var t := _targeting()
 	_audio.set_targeting(t.x, t.y, t.z)
 	_audio.set_instability(_controller.sway_instability())
+	# The steady-breath metronome: while held breath locks the aim, the audio
+	# system ticks the release window down by ear.
+	_audio.set_breath(_controller.breath_fraction(), _controller.is_steady())
 	_haptics.update(t.x, t.y)
 	# The crowd hushes while the bow is drawn — dramatic, and it guarantees the
 	# ambience never masks the aiming cues during a blindfolded shot.
@@ -361,8 +399,8 @@ func _targeting() -> Vector3:
 			best_dot = d
 			best_to = to
 	var angle := acos(clampf(best_dot, -1.0, 1.0))
-	var accuracy := clampf(1.0 - angle / deg_to_rad(12.0), 0.0, 1.0)
-	var lateral := clampf(_controller.right_axis().dot(best_to) * 4.0, -1.0, 1.0)
+	var accuracy := clampf(1.0 - angle / deg_to_rad(AssistSettings.guidance_cone_deg), 0.0, 1.0)
+	var lateral := clampf(_controller.right_axis().dot(best_to) * AssistSettings.pan_strength, -1.0, 1.0)
 	var vertical := clampf((best_to.y - forward.y) * 6.0, -1.0, 1.0)
 	return Vector3(accuracy, lateral, vertical)
 

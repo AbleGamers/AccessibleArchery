@@ -91,7 +91,7 @@ func _process(delta: float) -> void:
 			var crowd := _crowd_sample(dt)
 			frame += Vector2(crowd, crowd)
 			frame += _events_frame(dt)
-		_playback.push_frame(frame)
+		_playback.push_frame(frame * AssistSettings.sfx_volume)
 	# Drop finished one-shots.
 	_events = _events.filter(func(e): return e["t"] < _event_duration(e))
 

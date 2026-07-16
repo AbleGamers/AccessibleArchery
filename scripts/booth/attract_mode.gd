@@ -23,6 +23,7 @@ enum Phase { AIMING, DRAWING, HOLDING, PAUSING }
 
 var _controller: ArcheryController
 var _select: CharacterSelect
+var _playstyle: PlaystyleSelect
 var _banner: CanvasLayer
 var _active: bool = false
 var _emitting: bool = false      # true while WE emit intents (ignore them)
@@ -34,9 +35,10 @@ var _aim_from: Vector2 = Vector2.ZERO
 var _aim_to: Vector2 = Vector2.ZERO
 var _shots: int = 0
 
-func setup(controller: ArcheryController, select: CharacterSelect) -> void:
+func setup(controller: ArcheryController, select: CharacterSelect, playstyle: PlaystyleSelect = null) -> void:
 	_controller = controller
 	_select = select
+	_playstyle = playstyle
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -67,6 +69,12 @@ func _touch() -> void:
 		_wake()
 
 func _process(delta: float) -> void:
+	# While the first-run play-style picker is up, the station simply rests on it
+	# (a safe welcome screen). The demo must not take over — its draw intents
+	# would be received by the picker and confirm a random preset.
+	if _playstyle != null and _playstyle.is_open():
+		_idle = 0.0
+		return
 	if not _active:
 		_idle += delta
 		if _idle >= idle_after:

@@ -65,6 +65,67 @@ var audio_cues_enabled: bool = true
 ## so a blind player can keep the cues and drop the noise, or vice versa.
 var sfx_enabled: bool = true
 
+## Level for the accessibility tones (AudioCueSystem): ping, draw tone, chirp,
+## breath metronome, UI ticks. 1.0 = default mix, up to 1.5 for a loud venue —
+## independent of sfx_volume so a booth can run the cues hot and the crowd
+## quiet on the same machine, without touching OS volume.
+var cue_volume: float = 1.0
+
+## Level for atmosphere/feedback (SfxSystem): crowd, whoosh, thunk, fanfare.
+var sfx_volume: float = 1.0
+
+## Level for the OS text-to-speech voice, 0-100 (percentage, per
+## DisplayServer.tts_speak). Independent of tts_enabled so a station can keep
+## speech on but duck it under the tones, or vice versa.
+var tts_volume: float = 100.0
+
+## --- Sound-cue tuning (the AudioCueSystem knobs, player-adjustable) -----------
+## Every value that shapes how the aiming tones FEEL lives here, not as a magic
+## number in the synth, so a player can dial the guidance to their own ears from
+## the options menu (hearing range, tempo tolerance, how much help they want).
+
+## Pitch range of the aiming tones (Hz): the ping's low end (far from centre)
+## and high end (dead centre), and the reference/spread for the draw tone. Raise
+## the low end or lower the high end for high-frequency hearing loss or
+## hyperacusis.
+var cue_pitch_low: float = 220.0
+var cue_pitch_high: float = 880.0
+
+## Multiplies the ping cadence — higher = the beeps come faster at every
+## distance. A tempo preference / processing-speed aid.
+var cue_tempo: float = 1.0
+
+## The guidance cone, in degrees: how far off a target the aim can be before the
+## cues (and the precision-aim slowdown) start reacting. Wider = help kicks in
+## from further out; narrower = the cues only tighten when you are already close.
+## Shared by the audio ping, the haptics, and the precision-aim zone so "how
+## early does the game start guiding me" is one honest number.
+var guidance_cone_deg: float = 12.0
+
+## How sharply the stereo pan swings toward the target side. Higher = the ping
+## jumps hard left/right for a small aim error (easier to hear direction, harder
+## to hold centred).
+var pan_strength: float = 4.0
+
+## The separate-in-time elevation cue: when your aim is off vertically, an
+## alternating centred beat says up (rising pair) or down (falling pair). Turn
+## it off to steer on the left/right ping alone (some players find the extra
+## beat noisy and prefer the spoken high/low callout after each shot).
+var elevation_cue_enabled: bool = true
+
+## How dramatic the up/down pitch jump is (octaves at full error). Bigger = a
+## more obvious rise/fall for the same elevation error.
+var elevation_interval: float = 0.75
+
+## How loud the aiming ping stays UNDER the draw tone while you hold a draw
+## (0 = silent, like the old behaviour; 1 = as loud as when not drawing). Raise
+## it if the draw tone masks your ability to hear drift off the gold.
+var aim_cue_while_drawing: float = 0.5
+
+## Volume of the steady-breath metronome ticks (0 = off). The countdown of the
+## release window; some players want it prominent, others find it distracting.
+var breath_tick_volume: float = 1.0
+
 ## --- "Second Channel" redundancy (GDD: win by sight, sound, OR touch) --------
 ## Every critical cue — aim, wind, draw-tension — is broadcast on all three
 ## channels at once, so no single sense is required.
@@ -111,6 +172,16 @@ var player_name: String = ""
 ## Purely presentational plus shooting height — never gameplay advantage.
 var athlete_index: int = 0
 
+## Which play-style preset is active (index into PlayPresets.PRESETS). Set by the
+## "How do you want to play?" picker; drives which card it highlights next time.
+var playstyle_index: int = 0
+
+## True once the player has been through first-run setup (picked a play style).
+## Gates the play-style picker: shown on first launch, skipped afterwards (the
+## player can reopen it from the options menu). At a booth each station is
+## configured once, then walk-up players go straight to athlete select.
+var setup_complete: bool = false
+
 ## Player rebinds of input actions (action name -> serialized InputEvent).
 ## Written by the remapping UI via InputRouter.rebind(); applied on startup.
 ## Remapping is itself an accessibility feature: a lot of assistive hardware
@@ -121,6 +192,12 @@ var input_overrides: Dictionary = {}
 ## friendlier to players with slow or imprecise input, and also set the
 ## auto-release timing for hands-free schemes (switch / eye tracking).
 var full_draw_seconds: float = 1.2
+
+## Rate steering slows as the aim closes on a target — a device-agnostic
+## "precision zone": coarse sweeps stay fast, the last few degrees are fine.
+## 0 = constant speed everywhere, 0.9 = crawl over the gold. Applies to every
+## rate device identically, so no device gains an aim advantage.
+var precision_slowdown: float = 0.65
 
 # --- Persistence (user://) ----------------------------------------------------
 # Accessibility choices are saved so a player only sets them up once. Writes are
@@ -159,6 +236,18 @@ func _load() -> void:
 	target_size_scale = data.get("target_size_scale", target_size_scale)
 	audio_cues_enabled = data.get("audio_cues_enabled", audio_cues_enabled)
 	sfx_enabled = data.get("sfx_enabled", sfx_enabled)
+	cue_volume = data.get("cue_volume", cue_volume)
+	sfx_volume = data.get("sfx_volume", sfx_volume)
+	tts_volume = data.get("tts_volume", tts_volume)
+	cue_pitch_low = data.get("cue_pitch_low", cue_pitch_low)
+	cue_pitch_high = data.get("cue_pitch_high", cue_pitch_high)
+	cue_tempo = data.get("cue_tempo", cue_tempo)
+	guidance_cone_deg = data.get("guidance_cone_deg", guidance_cone_deg)
+	pan_strength = data.get("pan_strength", pan_strength)
+	elevation_cue_enabled = data.get("elevation_cue_enabled", elevation_cue_enabled)
+	elevation_interval = data.get("elevation_interval", elevation_interval)
+	aim_cue_while_drawing = data.get("aim_cue_while_drawing", aim_cue_while_drawing)
+	breath_tick_volume = data.get("breath_tick_volume", breath_tick_volume)
 	captions_enabled = data.get("captions_enabled", captions_enabled)
 	tts_enabled = data.get("tts_enabled", tts_enabled)
 	haptics_enabled = data.get("haptics_enabled", haptics_enabled)
@@ -172,9 +261,12 @@ func _load() -> void:
 	impact_cam_enabled = data.get("impact_cam_enabled", impact_cam_enabled)
 	camera_on_left = data.get("camera_on_left", camera_on_left)
 	full_draw_seconds = data.get("full_draw_seconds", full_draw_seconds)
+	precision_slowdown = data.get("precision_slowdown", precision_slowdown)
 	input_scheme = int(data.get("input_scheme", input_scheme))
 	player_name = str(data.get("player_name", player_name))
 	athlete_index = int(data.get("athlete_index", athlete_index))
+	playstyle_index = int(data.get("playstyle_index", playstyle_index))
+	setup_complete = bool(data.get("setup_complete", setup_complete))
 	var overrides: Variant = data.get("input_overrides", {})
 	if typeof(overrides) == TYPE_DICTIONARY:
 		input_overrides = overrides
@@ -186,6 +278,18 @@ func _save() -> void:
 		"target_size_scale": target_size_scale,
 		"audio_cues_enabled": audio_cues_enabled,
 		"sfx_enabled": sfx_enabled,
+		"cue_volume": cue_volume,
+		"sfx_volume": sfx_volume,
+		"tts_volume": tts_volume,
+		"cue_pitch_low": cue_pitch_low,
+		"cue_pitch_high": cue_pitch_high,
+		"cue_tempo": cue_tempo,
+		"guidance_cone_deg": guidance_cone_deg,
+		"pan_strength": pan_strength,
+		"elevation_cue_enabled": elevation_cue_enabled,
+		"elevation_interval": elevation_interval,
+		"aim_cue_while_drawing": aim_cue_while_drawing,
+		"breath_tick_volume": breath_tick_volume,
 		"captions_enabled": captions_enabled,
 		"tts_enabled": tts_enabled,
 		"haptics_enabled": haptics_enabled,
@@ -199,9 +303,12 @@ func _save() -> void:
 		"impact_cam_enabled": impact_cam_enabled,
 		"camera_on_left": camera_on_left,
 		"full_draw_seconds": full_draw_seconds,
+		"precision_slowdown": precision_slowdown,
 		"input_scheme": int(input_scheme),
 		"player_name": player_name,
 		"athlete_index": athlete_index,
+		"playstyle_index": playstyle_index,
+		"setup_complete": setup_complete,
 		"input_overrides": input_overrides,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)

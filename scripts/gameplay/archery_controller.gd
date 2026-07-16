@@ -177,7 +177,7 @@ func _process(delta: float) -> void:
 			_emit()
 	var changed := false
 	if _axis != Vector2.ZERO:
-		var step := turn_speed * AssistSettings.aim_sensitivity * delta
+		var step := turn_speed * AssistSettings.aim_sensitivity * _precision_factor() * delta
 		_yaw = clampf(_yaw - _axis.x * step, -yaw_limit, yaw_limit)
 		_pitch = clampf(_pitch - _axis.y * step, -pitch_limit, pitch_limit)
 		_apply_rotation()
@@ -314,11 +314,41 @@ func _apply_aim_assist(dir: Vector3) -> Vector3:
 	var assist := AssistSettings.aim_assist
 	if assist <= 0.0:
 		return dir
-	var target := get_tree().get_first_node_in_group("targets")
-	if target == null:
+	var to_target := _nearest_target_dir()
+	if to_target == Vector3.ZERO:
 		return dir
-	var to_target: Vector3 = (target.global_position - global_position).normalized()
 	return dir.lerp(to_target, assist).normalized()
+
+## Device-agnostic fine aim: rate steering slows as the aim closes on a target,
+## so coarse sweeps stay quick but the last few degrees are precise. The scale
+## comes from AssistSettings.precision_slowdown and applies to every rate device
+## identically — parity between devices is preserved. The cone is the shared
+## AssistSettings.guidance_cone_deg, so it matches the audio/haptic targeting.
+func _precision_factor() -> float:
+	var slow := AssistSettings.precision_slowdown
+	if slow <= 0.0:
+		return 1.0
+	var to_target := _nearest_target_dir()
+	if to_target == Vector3.ZERO:
+		return 1.0
+	var angle := acos(clampf(aim_forward().normalized().dot(to_target), -1.0, 1.0))
+	var closeness := clampf(1.0 - angle / deg_to_rad(AssistSettings.guidance_cone_deg), 0.0, 1.0)
+	return 1.0 - slow * closeness
+
+## Unit direction to the target nearest the current aim (ZERO if none) — shared
+## by the precision zone and aim assist, so both act on the target the player is
+## actually working, not merely the first one in the scene.
+func _nearest_target_dir() -> Vector3:
+	var forward := aim_forward().normalized()
+	var best := Vector3.ZERO
+	var best_dot := -1.0
+	for target in get_tree().get_nodes_in_group("targets"):
+		var to: Vector3 = (target.global_position - global_position).normalized()
+		var d := forward.dot(to)
+		if d > best_dot:
+			best_dot = d
+			best = to
+	return best
 
 # --- First-person bow visual --------------------------------------------------
 

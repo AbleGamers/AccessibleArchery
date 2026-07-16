@@ -26,6 +26,9 @@ mono_crash.*.json
 Thumbs.db
 *.swp
 
+# AI-assistant orientation notes — kept local to each machine, not published.
+CLAUDE.md
+
 # Voice bridge: local Python venv and downloaded speech models (large, per-machine)
 .venv/
 /models/

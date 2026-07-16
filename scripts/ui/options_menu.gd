@@ -6,6 +6,10 @@ class_name OptionsMenu
 ## in sync. The menu is an overlay — it does not pause — so all hotkeys keep
 ## working while it is open.
 
+## Emitted when the player asks to re-run the "How do you want to play?" preset
+## picker (main.gd reopens it). Closing the menu first keeps one overlay up.
+signal playstyle_requested
+
 var _root: Control
 var _dim: ColorRect
 var _syncing: bool = false
@@ -116,21 +120,40 @@ func _build() -> void:
 	vb.add_child(_hint("Every option here also has a hotkey. Esc closes this menu."))
 	vb.add_child(HSeparator.new())
 
+	# One-tap route back to the preset picker — for players who want the guided
+	# bundles instead of tuning the individual rows below.
+	var preset_btn := Button.new()
+	preset_btn.text = "Change play style (guided presets)  →"
+	preset_btn.pressed.connect(func():
+		close()
+		playstyle_requested.emit())
+	vb.add_child(preset_btn)
+	vb.add_child(HSeparator.new())
+
 	_name_row(vb)
 	vb.add_child(HSeparator.new())
 
 	_toggle_row(vb, "Audio cues (sonified aim)",
 		func(): return AssistSettings.audio_cues_enabled,
 		func(v): AssistSettings.audio_cues_enabled = v)
+	_slider_row(vb, "  Cue volume", 0.0, 1.5, 0.05,
+		func(): return AssistSettings.cue_volume,
+		func(v): AssistSettings.cue_volume = v)
 	_toggle_row(vb, "Sound effects & crowd",
 		func(): return AssistSettings.sfx_enabled,
 		func(v): AssistSettings.sfx_enabled = v)
+	_slider_row(vb, "  SFX / crowd volume", 0.0, 1.5, 0.05,
+		func(): return AssistSettings.sfx_volume,
+		func(v): AssistSettings.sfx_volume = v)
 	_toggle_row(vb, "Captions / callouts",
 		func(): return AssistSettings.captions_enabled,
 		func(v): AssistSettings.captions_enabled = v)
 	_toggle_row(vb, "Spoken announcements (TTS)",
 		func(): return AssistSettings.tts_enabled,
 		func(v): AssistSettings.tts_enabled = v)
+	_slider_row(vb, "  Speech volume", 0.0, 100.0, 5.0,
+		func(): return AssistSettings.tts_volume,
+		func(v): AssistSettings.tts_volume = v)
 	_toggle_row(vb, "Haptic feedback (controller)",
 		func(): return AssistSettings.haptics_enabled,
 		func(v): AssistSettings.haptics_enabled = v)
@@ -164,6 +187,9 @@ func _build() -> void:
 	_slider_row(vb, "Aim assist", 0.0, 1.0, 0.05,
 		func(): return AssistSettings.aim_assist,
 		func(v): AssistSettings.aim_assist = v)
+	_slider_row(vb, "Precision aim (slow near target)", 0.0, 0.9, 0.05,
+		func(): return AssistSettings.precision_slowdown,
+		func(v): AssistSettings.precision_slowdown = v)
 	_slider_row(vb, "Target size", 0.5, 2.5, 0.1,
 		func(): return AssistSettings.target_size_scale,
 		func(v): AssistSettings.target_size_scale = v)
@@ -179,6 +205,37 @@ func _build() -> void:
 	_slider_row(vb, "Draw time (seconds)", 0.4, 3.0, 0.1,
 		func(): return AssistSettings.full_draw_seconds,
 		func(v): AssistSettings.full_draw_seconds = v)
+
+	vb.add_child(HSeparator.new())
+	vb.add_child(_heading("Sound cue tuning"))
+	vb.add_child(_hint("Shapes how the aiming tones sound and guide you. Every value\nthe cues use is here — nothing is baked into the code."))
+	_toggle_row(vb, "Up/down cue (elevation beat)",
+		func(): return AssistSettings.elevation_cue_enabled,
+		func(v): AssistSettings.elevation_cue_enabled = v)
+	_slider_row(vb, "Guidance range (degrees)", 4.0, 24.0, 1.0,
+		func(): return AssistSettings.guidance_cone_deg,
+		func(v): AssistSettings.guidance_cone_deg = v)
+	_slider_row(vb, "Cue tempo (beep speed)", 0.5, 2.5, 0.1,
+		func(): return AssistSettings.cue_tempo,
+		func(v): AssistSettings.cue_tempo = v)
+	_slider_row(vb, "Left/right cue strength", 1.0, 8.0, 0.5,
+		func(): return AssistSettings.pan_strength,
+		func(v): AssistSettings.pan_strength = v)
+	_slider_row(vb, "Up/down cue strength", 0.3, 1.5, 0.05,
+		func(): return AssistSettings.elevation_interval,
+		func(v): AssistSettings.elevation_interval = v)
+	_slider_row(vb, "Cue pitch — low (Hz)", 110.0, 440.0, 10.0,
+		func(): return AssistSettings.cue_pitch_low,
+		func(v): AssistSettings.cue_pitch_low = v)
+	_slider_row(vb, "Cue pitch — high (Hz)", 440.0, 1760.0, 20.0,
+		func(): return AssistSettings.cue_pitch_high,
+		func(v): AssistSettings.cue_pitch_high = v)
+	_slider_row(vb, "Aim cue while drawing", 0.0, 1.0, 0.05,
+		func(): return AssistSettings.aim_cue_while_drawing,
+		func(v): AssistSettings.aim_cue_while_drawing = v)
+	_slider_row(vb, "Breath tick volume", 0.0, 1.5, 0.05,
+		func(): return AssistSettings.breath_tick_volume,
+		func(v): AssistSettings.breath_tick_volume = v)
 
 	vb.add_child(HSeparator.new())
 	_scheme_row(vb)
