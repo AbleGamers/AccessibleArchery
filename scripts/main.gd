@@ -24,7 +24,7 @@ var _menu: OptionsMenu
 var _name_prompt: NamePrompt
 var _match: MatchManager
 var _impact_cam: ImpactCam
-var _stadium: Stadium
+var _venue: MeadowRange
 var _select: CharacterSelect
 var _playstyle: PlaystyleSelect
 var _sfx: SfxSystem
@@ -339,12 +339,12 @@ func _on_match_changed() -> void:
 	_prev_match_phase = _match.phase
 	_set_boards_match("Sets — You %d : %d CPU   (Set %d)" % [
 		_match.player_set_points, _match.cpu_set_points, _match.current_set])
-	if _stadium != null:
+	if _venue != null:
 		if _match.phase == MatchManager.Phase.MATCH_OVER:
-			_stadium.set_jumbotron("MATCH OVER", "YOU %d — %d CPU" % [
+			_venue.set_jumbotron("MATCH OVER", "YOU %d — %d CPU" % [
 				_match.player_set_points, _match.cpu_set_points])
 		else:
-			_stadium.set_jumbotron("SET %d" % _match.current_set, "YOU %d — %d CPU" % [
+			_venue.set_jumbotron("SET %d" % _match.current_set, "YOU %d — %d CPU" % [
 				_match.player_set_points, _match.cpu_set_points])
 	if _broadcast != null:
 		_broadcast.refresh(_match)
@@ -405,10 +405,11 @@ func _targeting() -> Vector3:
 	return Vector3(accuracy, lateral, vertical)
 
 func _setup_world() -> void:
-	# Low-poly Olympic arena (sky, stands + crowd, arch, floodlights, banners,
-	# live jumbotron). Kept as a member so match state can drive the big screen.
-	_stadium = Stadium.new()
-	add_child(_stadium)
+	# Low-poly tournament meadow (sky, hills + trees, tents, flags, bleachers +
+	# crowd, berm backstop, live LED screen). Kept as a member so match state can
+	# drive the big screen.
+	_venue = MeadowRange.new()
+	add_child(_venue)
 
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()

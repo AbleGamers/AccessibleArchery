@@ -204,13 +204,16 @@ confirms) and is fully spoken for blind play.
 
 ## 7. Presentation
 
-- **Look**: clean low-poly Olympic arena (stadium, crowd, floodlights,
-  jumbotron), everything generated in code. Third-person over-the-shoulder
-  rig; camera side is flippable (handedness/eye dominance).
+- **Look**: clean low-poly outdoor tournament meadow — a "festival field"
+  archery range (rolling grass, tree line and hills, tents, flag-lined lanes,
+  bleachers + crowd, earth-berm backstop, scaffold LED screen), everything
+  generated in code. Third-person over-the-shoulder rig; camera side is
+  flippable (handedness/eye dominance). Ambient scenery is static (no swaying
+  trees or flapping flags) so the Low-motion preset stays honest.
 - **Sound identity**: procedural whoosh/thunk/crowd/fanfare — atmosphere
   only; everything it reacts to is also captioned.
 - **Broadcast dressing**: scoreboard overlay, optional second-monitor
-  scoreboard window, impact cam, jumbotron match state.
+  scoreboard window, impact cam, big-screen match state.
 
 ## 8. Booth / event mode
 
