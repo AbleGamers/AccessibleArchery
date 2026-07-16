@@ -47,10 +47,10 @@ func _ready() -> void:
 	_build_screen()
 	_build_flag_line(-5.5)
 	_build_flag_line(5.5)
-	_build_tents(-16.0)
-	_build_tents(16.0)
-	_build_bleacher(Vector3(-10.5, 0.0, -8.0))
-	_build_bleacher(Vector3(10.5, 0.0, -8.0))
+	_build_tents(-21.0)
+	_build_tents(21.0)
+	_build_bleacher(Vector3(-11.5, 0.0, -17.0))
+	_build_bleacher(Vector3(11.5, 0.0, -17.0))
 	_build_hay_bales()
 	_commit_crowd()
 	_build_tree_line()
@@ -275,18 +275,25 @@ func _build_tents(x: float) -> void:
 
 # --- bleachers + hay bales + crowd ------------------------------------------------
 
-# A small four-tier bleacher each side near the archer — the festival audience
-# (same MultiMesh crowd the arena had, just closer to the ground).
+# A small four-tier grandstand set back down the lane on each flank, angled to
+# face the shooting line (same MultiMesh crowd the arena had). Tiers step out in
+# their own deep steps so the stand reads as raked seating, not a solid wall of
+# cubes when the over-the-shoulder camera catches the near flank.
 func _build_bleacher(center: Vector3) -> void:
 	var outward := Vector3(1, 0, 0) if center.x > 0.0 else Vector3(-1, 0, 0)
-	var length := 14.0
-	var step_out := 1.3
-	var step_up := 0.7
+	var length := 15.0
+	var step_out := 1.35
+	var step_up := 0.75
+	# Skid legs under the stand so it sits on the grass like a real bleacher.
+	for lz in [-length * 0.5 + 0.5, 0.0, length * 0.5 - 0.5]:
+		var foot := center + Vector3(0.0, 0.0, lz)
+		add_child(_segment(foot, foot + outward * (step_out * 3.5) + Vector3.UP * (step_up * 3.5), 0.12, STEEL))
 	for i in 4:
 		var base := center + outward * (i * step_out) + Vector3.UP * (i * step_up)
-		var size := Vector3(step_out, step_up, length)
-		_solid(_box(size), base + Vector3.UP * (step_up * 0.5), WOOD * (0.9 + 0.05 * (i % 2)))
-		var seat_top := base + Vector3.UP * (step_up + 0.28)
+		# A bench plank (thin, seat-deep) rather than a full-height block — the gap
+		# between tiers is what stops it looking like stacked crates.
+		_solid(_box(Vector3(step_out * 0.9, 0.22, length)), base + Vector3.UP * 0.11, WOOD * (0.92 + 0.05 * (i % 2)))
+		var seat_top := base + Vector3.UP * 0.5
 		var seats := int(length / 1.25)
 		for j in seats:
 			var p := seat_top + Vector3(0, 0, -length * 0.5 + 0.6 + j * 1.25)
@@ -361,19 +368,25 @@ func _build_tree(base: Vector3) -> void:
 	canopy.position = base + Vector3(0.0, h * 0.65, 0.0)
 	add_child(canopy)
 
-# Distant rolling hills — big flattened domes on the horizon.
+# Distant rolling hills — big domes ringing the far horizon. Sized and raised so
+# their crowns clear the tree line (and the berm, straight down the lane), so the
+# meadow reads as open country rather than a flat green disc. A hazy blue-green
+# tint sells the aerial-perspective distance.
 func _build_hills() -> void:
-	for i in 7:
-		var a := PI + PI * float(i) / 6.0   # arc across the far half of the horizon
-		var p := Vector3(cos(a) * 130.0, -6.0, sin(a) * 130.0 - 40.0)
+	for i in 9:
+		var a := PI + PI * float(i) / 8.0   # arc across the far half of the horizon
+		var p := Vector3(cos(a) * 150.0, -2.0, sin(a) * 150.0 - 40.0)
 		var hill := MeshInstance3D.new()
 		var dome := SphereMesh.new()
-		dome.radius = randf_range(30.0, 55.0)
-		dome.height = randf_range(18.0, 30.0)
+		dome.radius = randf_range(40.0, 66.0)
+		dome.height = randf_range(34.0, 52.0)
 		dome.radial_segments = 12
 		dome.rings = 6
 		hill.mesh = dome
-		hill.material_override = _mat(Color(0.30, 0.42, 0.26) * randf_range(0.9, 1.05))
+		# Fade toward the sky's horizon colour with the time of day, so the ridge
+		# line settles into the haze instead of standing out as hard geometry.
+		var base_col := Color(0.34, 0.46, 0.40).lerp(Color(0.52, 0.44, 0.42), _tod)
+		hill.material_override = _mat(base_col * randf_range(0.92, 1.06))
 		hill.position = p
 		add_child(hill)
 
