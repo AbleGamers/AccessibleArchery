@@ -64,8 +64,8 @@ players; **P** reopens it). Then: a 3D archery range with three targets. Press
 | `scripts/gameplay/` | Bow, arrow, target — pure game logic, no device knowledge |
 | `scripts/accessibility/` | Assist settings + audio-cue system |
 | `scripts/main.gd` | Vertical-slice wiring (placeholder, code-built scene) |
+| `docs/GDD.md` | The game design document — pillars, core loop, Second Channel |
 | `docs/ACCESSIBILITY.md` | The standards and design checklist we build against |
-| `CLAUDE.md` | Orientation for AI coding assistants |
 
 ## License
 

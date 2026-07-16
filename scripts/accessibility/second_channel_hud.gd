@@ -87,7 +87,7 @@ func announce(text: String, speak: bool = true) -> void:
 		_caption_timer = 2.5
 	if speak and AssistSettings.tts_enabled and _tts_voice != "":
 		DisplayServer.tts_stop()
-		DisplayServer.tts_speak(text, _tts_voice)
+		DisplayServer.tts_speak(text, _tts_voice, int(clampf(AssistSettings.tts_volume, 0.0, 100.0)))
 
 ## Flash the screen the moment full draw is reached.
 func flash_draw_snap() -> void:
