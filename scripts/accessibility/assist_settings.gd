@@ -360,5 +360,7 @@ func controls_hint() -> String:
 		InputScheme.VOICE:
 			return "Say / debug keys: arrows=aim  Q=draw  E=loose  C=center"
 		InputScheme.BRIDGE:
-			return "External interface on UDP :9010 — see docs/AT_BRIDGE.md (try tools/at_bridge_demo.py)"
+			# Player-facing only; the wiring details (UDP :9010, demo client) live in
+			# docs/AT_BRIDGE.md so they never clutter the shooting view.
+			return "Aim / draw / release come from your connected assistive device"
 	return ""
