@@ -423,7 +423,12 @@ func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	_hud = Label.new()
-	_hud.position = Vector2(20, 132)   # below the broadcast scoreboard panel
+	# Anchored to the bottom-left and grown upward, so this device-help + run-total
+	# panel sits under the downrange targets instead of over the player's aim line.
+	_hud.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_hud.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_hud.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_hud.position = Vector2(20, -14)
 	_hud.add_theme_font_size_override("font_size", 18)
 	_hud.add_theme_color_override("font_color", Color.WHITE)
 	_hud.add_theme_color_override("font_outline_color", Color.BLACK)

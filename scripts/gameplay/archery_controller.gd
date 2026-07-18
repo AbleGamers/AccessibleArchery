@@ -52,7 +52,7 @@ const FULL_DRAW_THRESHOLD := 0.97
 ## manual release are identical. Over-hold past the breath and sway returns,
 ## growing harder and faster. Amplitude scales with AssistSettings.sway_scale
 ## (0 = always steady). Sway rotates only the aim pivot — never the camera.
-const SWAY_BASE := deg_to_rad(1.3)      # amplitude at full charge, unsteadied
+const SWAY_BASE := deg_to_rad(0.65)     # amplitude at full charge, unsteadied
 const OVERHOLD_GROWTH := 2.2            # amplitude growth per second over-held
 
 var _yaw: float = 0.0
