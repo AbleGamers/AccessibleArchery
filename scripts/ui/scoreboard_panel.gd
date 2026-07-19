@@ -8,11 +8,13 @@ class_name ScoreboardPanel
 var _current_label: Label
 var _match_label: Label
 var _list_label: Label
+var _panel: PanelContainer
 
 func _ready() -> void:
 	layer = 8
 	_build_ui()
 	Leaderboard.updated.connect(_refresh_list)
+	AssistSettings.changed.connect(_apply_side)
 	_refresh_list()
 
 func set_current(score: int) -> void:
@@ -25,12 +27,7 @@ func set_match(text: String) -> void:
 
 func _build_ui() -> void:
 	var panel := PanelContainer.new()
-	panel.anchor_left = 1.0
-	panel.anchor_right = 1.0
-	panel.offset_left = -360.0
-	panel.offset_right = -16.0
-	panel.offset_top = 70.0
-	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_panel = panel
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.05, 0.06, 0.10, 0.92)
 	sb.set_corner_radius_all(10)
@@ -50,6 +47,28 @@ func _build_ui() -> void:
 	vb.add_child(_label("TOP SCORES", 20, Color.WHITE))
 	_list_label = _label("", 22, Color(0.85, 0.90, 1.0))
 	vb.add_child(_list_label)
+
+	_apply_side()
+
+# Sit on the same safe side as the broadcast board (opposite the targets),
+# below it so the two never overlap; flips with the camera (V).
+func _apply_side() -> void:
+	if _panel == null:
+		return
+	const WIDTH := 344.0
+	if AssistSettings.scoreboard_on_left():
+		_panel.anchor_left = 0.0
+		_panel.anchor_right = 0.0
+		_panel.offset_left = 16.0
+		_panel.offset_right = 16.0 + WIDTH
+		_panel.grow_horizontal = Control.GROW_DIRECTION_END
+	else:
+		_panel.anchor_left = 1.0
+		_panel.anchor_right = 1.0
+		_panel.offset_left = -(16.0 + WIDTH)
+		_panel.offset_right = -16.0
+		_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_panel.offset_top = 120.0   # clears the broadcast board stacked above it
 
 func _refresh_list() -> void:
 	if _list_label == null:

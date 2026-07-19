@@ -14,26 +14,26 @@ class_name AthleteRoster
 const ATHLETES := [
 	{
 		"name": "MAYA", "tagline": "Standing · Recurve",
-		"skin": Color(0.45, 0.30, 0.20), "kit": Color(0.13, 0.55, 0.55),
-		"trim": Color(0.95, 0.80, 0.20), "hair": Color(0.08, 0.07, 0.06),
+		"skin": Color(0.45, 0.30, 0.20), "kit": Color(0.55, 0.24, 0.78),
+		"trim": Color(1.00, 0.84, 0.24), "hair": Color(0.08, 0.07, 0.06),
 		"hair_style": "ponytail", "seated": false,
 	},
 	{
 		"name": "LEO", "tagline": "Standing · Composite",
-		"skin": Color(0.86, 0.67, 0.52), "kit": Color(0.75, 0.20, 0.20),
-		"trim": Color(0.95, 0.95, 0.95), "hair": Color(0.35, 0.22, 0.10),
+		"skin": Color(0.86, 0.67, 0.52), "kit": Color(0.90, 0.19, 0.26),
+		"trim": Color(0.97, 0.97, 0.97), "hair": Color(0.35, 0.22, 0.10),
 		"hair_style": "short", "seated": false,
 	},
 	{
 		"name": "ANA", "tagline": "Wheelchair · Recurve",
-		"skin": Color(0.70, 0.50, 0.35), "kit": Color(0.90, 0.72, 0.16),
-		"trim": Color(0.15, 0.15, 0.18), "hair": Color(0.12, 0.10, 0.09),
+		"skin": Color(0.70, 0.50, 0.35), "kit": Color(0.09, 0.68, 0.64),
+		"trim": Color(1.00, 0.47, 0.34), "hair": Color(0.12, 0.10, 0.09),
 		"hair_style": "bun", "seated": true,
 	},
 	{
 		"name": "KAI", "tagline": "Wheelchair · Composite",
-		"skin": Color(0.96, 0.80, 0.65), "kit": Color(0.20, 0.35, 0.80),
-		"trim": Color(0.90, 0.55, 0.10), "hair": Color(0.05, 0.05, 0.06),
+		"skin": Color(0.96, 0.80, 0.65), "kit": Color(0.14, 0.42, 0.93),
+		"trim": Color(1.00, 0.58, 0.12), "hair": Color(0.05, 0.05, 0.06),
 		"hair_style": "short", "seated": true,
 	},
 ]

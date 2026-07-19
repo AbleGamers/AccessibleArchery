@@ -24,9 +24,10 @@ var _menu: OptionsMenu
 var _name_prompt: NamePrompt
 var _match: MatchManager
 var _impact_cam: ImpactCam
-var _stadium: Stadium
+var _venue: MeadowRange
 var _select: CharacterSelect
 var _playstyle: PlaystyleSelect
+var _device_switcher: DeviceSwitcher
 var _sfx: SfxSystem
 var _attract: AttractMode
 var _prev_match_phase: int = MatchManager.Phase.PLAYER_TURN
@@ -124,6 +125,11 @@ func _ready() -> void:
 	_select = CharacterSelect.new()
 	add_child(_select)
 
+	# Playtest device switcher (backtick). Hidden by default; players pick their
+	# device up front, so the number-key chooser is no longer a persistent HUD.
+	_device_switcher = DeviceSwitcher.new()
+	add_child(_device_switcher)
+
 	# "How do you want to play?" — first-run accessibility-preset picker. Shown
 	# once (before athlete select) so a new player sets up their experience and a
 	# blind player discovers audio-guided play by ear; then it hands off to the
@@ -170,6 +176,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select.open()
 		KEY_ESCAPE:   # open / close the accessibility & options menu
 			_menu.toggle()
+		KEY_QUOTELEFT:   # backtick — playtest device switcher (press 1-6 to swap)
+			_device_switcher.toggle()
 
 func _bank_score() -> void:
 	if _name_prompt.is_open():
@@ -339,12 +347,12 @@ func _on_match_changed() -> void:
 	_prev_match_phase = _match.phase
 	_set_boards_match("Sets — You %d : %d CPU   (Set %d)" % [
 		_match.player_set_points, _match.cpu_set_points, _match.current_set])
-	if _stadium != null:
+	if _venue != null:
 		if _match.phase == MatchManager.Phase.MATCH_OVER:
-			_stadium.set_jumbotron("MATCH OVER", "YOU %d — %d CPU" % [
+			_venue.set_jumbotron("MATCH OVER", "YOU %d — %d CPU" % [
 				_match.player_set_points, _match.cpu_set_points])
 		else:
-			_stadium.set_jumbotron("SET %d" % _match.current_set, "YOU %d — %d CPU" % [
+			_venue.set_jumbotron("SET %d" % _match.current_set, "YOU %d — %d CPU" % [
 				_match.player_set_points, _match.cpu_set_points])
 	if _broadcast != null:
 		_broadcast.refresh(_match)
@@ -405,16 +413,22 @@ func _targeting() -> Vector3:
 	return Vector3(accuracy, lateral, vertical)
 
 func _setup_world() -> void:
-	# Low-poly Olympic arena (sky, stands + crowd, arch, floodlights, banners,
-	# live jumbotron). Kept as a member so match state can drive the big screen.
-	_stadium = Stadium.new()
-	add_child(_stadium)
+	# Low-poly tournament meadow (sky, hills + trees, tents, flags, bleachers +
+	# crowd, berm backstop, live LED screen). Kept as a member so match state can
+	# drive the big screen.
+	_venue = MeadowRange.new()
+	add_child(_venue)
 
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	_hud = Label.new()
-	_hud.position = Vector2(20, 132)   # below the broadcast scoreboard panel
+	# Anchored to the bottom-left and grown upward, so this device-help + run-total
+	# panel sits under the downrange targets instead of over the player's aim line.
+	_hud.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_hud.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_hud.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_hud.position = Vector2(20, -14)
 	_hud.add_theme_font_size_override("font_size", 18)
 	_hud.add_theme_color_override("font_color", Color.WHITE)
 	_hud.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -427,8 +441,7 @@ func _refresh_hud() -> void:
 	# The broadcast scoreboard (top-left) now shows set/arrow scores; this panel
 	# keeps the device/controls help and run totals for testing.
 	var lines := PackedStringArray([
-		"Device [1 Keyboard  2 Gamepad  3 Switch  4 Eye  5 Voice  6 Bridge]: %s" % AssistSettings.scheme_label(),
-		"  %s" % AssistSettings.controls_hint(),
+		AssistSettings.controls_hint(),
 		"",
 		_match.message if _match != null else "",
 		"",
@@ -436,6 +449,6 @@ func _refresh_hud() -> void:
 			int(round(_charge * 100.0)),
 			int(round((_controller.breath_fraction() if _controller != null else 1.0) * 100.0))],
 		"Audio cues: %s" % ("ON" if AssistSettings.audio_cues_enabled else "off"),
-		"Esc: options menu   P: athlete   L: bank   R: end/restart   V: flip camera   B: scoreboard",
+		"Esc: options   P: athlete   L: bank   R: end/restart   V: flip camera   B: scoreboard   `: devices",
 	])
 	_hud.text = "\n".join(lines)

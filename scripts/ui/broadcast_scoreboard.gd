@@ -9,14 +9,15 @@ const ARROW_CELLS := 3
 var _set_label: Label
 var _you_cells: Array[Label] = []   # [set points, arrow1, arrow2, arrow3]
 var _cpu_cells: Array[Label] = []
+var _root: VBoxContainer
 
 func _ready() -> void:
 	layer = 9
 
-	var root := VBoxContainer.new()
-	root.position = Vector2(16, 14)
-	root.add_theme_constant_override("separation", 4)
-	add_child(root)
+	_root = VBoxContainer.new()
+	_root.add_theme_constant_override("separation", 4)
+	add_child(_root)
+	var root := _root
 
 	_set_label = Label.new()
 	_set_label.add_theme_font_size_override("font_size", 16)
@@ -33,6 +34,23 @@ func _ready() -> void:
 
 	_build_row(grid, "YOU", _you_cells)
 	_build_row(grid, "CPU", _cpu_cells)
+
+	_apply_side.call_deferred()   # after the VBox has a laid-out size
+	AssistSettings.changed.connect(_apply_side)
+	get_viewport().size_changed.connect(_apply_side)
+
+# Sit on the safe screen side (opposite the downrange targets) so the board
+# never covers them; flips live when the camera flips (V). The board is a
+# shrink-to-fit VBox, so it is positioned by hand from its own content width
+# (corner anchors + grow proved unreliable for a Container this small).
+func _apply_side() -> void:
+	if _root == null or not is_inside_tree():
+		return
+	_root.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	var view_w := _root.get_viewport().get_visible_rect().size.x
+	var board_w := _root.get_combined_minimum_size().x
+	var x := 16.0 if AssistSettings.scoreboard_on_left() else view_w - board_w - 16.0
+	_root.position = Vector2(x, 14.0)
 
 ## Rebuild cell contents from the current match state.
 func refresh(m: MatchManager) -> void:
