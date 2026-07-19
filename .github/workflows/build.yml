@@ -161,3 +161,37 @@ jobs:
             --title "Accessible Archery $GITHUB_REF_NAME" \
           || gh release upload "$GITHUB_REF_NAME" AccessibleArchery-booth-windows.zip \
             --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The single, never-changing playtester link. Every push to main that passes
+  # the Windows smoke test force-updates the rolling "latest" pre-release, so
+  # this URL always serves the newest main build:
+  #   https://github.com/AbleGamers/AccessibleArchery/releases/download/latest/AccessibleArchery-booth-windows.zip
+  # It's a PRE-release on a fixed `latest` tag, so it never steals the "Latest
+  # release" badge from the real vX.Y.Z versions — the tag URL works regardless.
+  publish-latest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [export, smoke-test-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download booth package
+        uses: actions/download-artifact@v4
+        with:
+          name: AccessibleArchery-booth-windows
+
+      - name: Force-update the rolling 'latest' pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Drop the previous rolling release + its tag, then recreate at this
+          # commit. The tag name and asset name never change, so the download
+          # URL is stable across every build.
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create latest AccessibleArchery-booth-windows.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Latest playtest build (main)" \
+            --notes "Auto-updated on every push to main. Always the newest build. Commit ${GITHUB_SHA}."
